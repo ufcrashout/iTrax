@@ -558,6 +558,29 @@
         // Global variables
         let map;
         let playbackData = null;
+        var userSettings = {{ user_settings | tojson }};
+        
+        // Timezone utility function
+        function formatTimestampForUser(timestamp) {
+            try {
+                const date = new Date(timestamp);
+                const options = {
+                    timeZone: userSettings.timezone || 'America/Chicago',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: userSettings.date_format ? userSettings.date_format.includes('%I') : true
+                };
+                
+                return new Intl.DateTimeFormat('en-US', options).format(date);
+            } catch (error) {
+                console.error('Error formatting timestamp:', error);
+                return timestamp;
+            }
+        }
         let currentIndex = 0;
         let isPlaying = false;
         let playbackInterval = null;
@@ -773,7 +796,7 @@
                     deviceMarkers[deviceName].bindPopup(`
                         <div class="text-center">
                             <h6><i class="fas fa-mobile-alt me-1"></i>${point.device_name}</h6>
-                            <p class="mb-1">${point.timestamp_cst}</p>
+                            <p class="mb-1">${formatTimestampForUser(point.timestamp)}</p>
                             <p class="mb-0"><small>${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</small></p>
                         </div>
                     `);
@@ -784,7 +807,7 @@
             
             // Update current time display
             if (currentPoint) {
-                document.getElementById('currentTimeDisplay').textContent = currentPoint.timestamp_cst;
+                document.getElementById('currentTimeDisplay').textContent = formatTimestampForUser(currentPoint.timestamp);
             }
         }
 

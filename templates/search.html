@@ -474,7 +474,7 @@
                                 <div class="small mt-1">{{ bookmark.description }}</div>
                             {% endif %}
                             <small class="text-muted">
-                                Saved: {{ bookmark.created_at | to_cst_date }}
+                                Saved: {{ bookmark.created_at | user_timezone }}
                             </small>
                         </div>
                         {% else %}

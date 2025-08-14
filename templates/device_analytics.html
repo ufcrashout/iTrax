@@ -470,8 +470,8 @@
                                     {% endif %}
                                 </div>
                                 <div class="location-stats">
-                                    <div><i class="fas fa-play me-1"></i>First: {{ location.first_visit | to_cst }}</div>
-                                    <div><i class="fas fa-stop me-1"></i>Last: {{ location.last_visit | to_cst }}</div>
+                                    <div><i class="fas fa-play me-1"></i>First: {{ location.first_visit | user_timezone }}</div>
+                                    <div><i class="fas fa-stop me-1"></i>Last: {{ location.last_visit | user_timezone }}</div>
                                     <div class="mt-1">
                                         <small class="text-muted">
                                             {{ "%.4f"|format(location.latitude) }}, {{ "%.4f"|format(location.longitude) }}
@@ -513,6 +513,29 @@
 
         // Location data from backend
         var analyticsData = {{ analytics_data | tojson }};
+        var userSettings = {{ user_settings | tojson }};
+        
+        // Timezone utility function
+        function formatTimestampForUser(timestamp) {
+            try {
+                const date = new Date(timestamp);
+                const options = {
+                    timeZone: userSettings.timezone || 'America/Chicago',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: userSettings.date_format ? userSettings.date_format.includes('%I') : true
+                };
+                
+                return new Intl.DateTimeFormat('en-US', options).format(date);
+            } catch (error) {
+                console.error('Error formatting timestamp:', error);
+                return timestamp;
+            }
+        }
         var markers = [];
         var colorPalette = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57'];
 
@@ -543,9 +566,9 @@
                                 Math.round(location.total_time_minutes) + 'm' : 
                                 (location.total_time_minutes/60).toFixed(1) + 'h'}</p>` : ''}
                         <p class="mb-1"><strong>First Visit:</strong></p>
-                        <small>${new Date(location.first_visit).toLocaleString('en-US', {timeZone: 'America/Chicago'})}</small>
+                        <small>${formatTimestampForUser(location.first_visit)}</small>
                         <p class="mb-1 mt-2"><strong>Last Visit:</strong></p>
-                        <small>${new Date(location.last_visit).toLocaleString('en-US', {timeZone: 'America/Chicago'})}</small>
+                        <small>${formatTimestampForUser(location.last_visit)}</small>
                     </div>
                 `);
             markers.push(marker);

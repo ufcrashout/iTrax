@@ -369,7 +369,7 @@
                                 <div class="text-center">
                                     <div class="stats-number">
                                         {% if devices %}
-                                            {{ (devices|last).last_seen | to_cst_date }}
+                                            {{ (devices|last).last_seen | user_timezone }}
                                         {% else %}
                                             N/A
                                         {% endif %}
@@ -421,7 +421,7 @@
                         
                         <p class="last-seen">
                             <i class="fas fa-clock me-1"></i>
-                            Last seen: {{ device.last_seen | to_cst }}
+                            Last seen: {{ device.last_seen | user_timezone }}
                         </p>
                         
                         <div class="mt-3">

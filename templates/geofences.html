@@ -403,7 +403,7 @@
                                     {% endfor %}
                                 </div>
                                 <small class="text-muted">
-                                    Created: {{ geofence.created_at | to_cst_date }}
+                                    Created: {{ geofence.created_at | user_timezone }}
                                 </small>
                             </div>
                             {% else %}
@@ -438,7 +438,7 @@
                                         </div>
                                         <div class="small">{{ event.device_name }} • {{ event.geofence_name }}</div>
                                     </div>
-                                    <small class="text-muted">{{ event.timestamp | to_cst }}</small>
+                                    <small class="text-muted">{{ event.timestamp | user_timezone }}</small>
                                 </div>
                             </div>
                             {% else %}

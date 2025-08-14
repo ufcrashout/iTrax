@@ -410,7 +410,7 @@
                 <div class="stats-card text-center">
                     <div class="stats-number" id="last-update">
                         {% if stats and stats.last_update %}
-                            {{ stats.last_update | to_cst_date }}
+                            {{ stats.last_update | user_timezone }}
                         {% else %}
                             N/A
                         {% endif %}
@@ -575,6 +575,7 @@
     <script>
         // Performance optimized map initialization
         var locations = {{ location_history | tojson }};
+        var userSettings = {{ user_settings | tojson }};
         var markers = [];
         var polylines = [];
         var deviceColors = {};
@@ -582,6 +583,28 @@
         var colorIndex = 0;
         var map;
         var markersLayer;
+        
+        // Timezone utility function
+        function formatTimestampForUser(timestamp) {
+            try {
+                const date = new Date(timestamp);
+                const options = {
+                    timeZone: userSettings.timezone || 'America/Chicago',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: userSettings.date_format ? userSettings.date_format.includes('%I') : true
+                };
+                
+                return new Intl.DateTimeFormat('en-US', options).format(date);
+            } catch (error) {
+                console.error('Error formatting timestamp:', error);
+                return timestamp;
+            }
+        }
 
         // Performance optimization - use LayerGroup for better performance with many markers
         markersLayer = L.layerGroup();
@@ -746,7 +769,7 @@
                                 <h6><i class="fas fa-mobile-alt me-1"></i>${loc.device_name}</h6>
                                 <p class="mb-1" style="color: ${markerColor}"><strong>${title}</strong></p>
                                 <p class="mb-1">${Number(latNum).toFixed(6)}, ${Number(lngNum).toFixed(6)}</p>
-                                <p class="mb-0"><small>${new Date(loc.timestamp).toLocaleString('en-US', {timeZone: 'America/Chicago', hour12: true})} CST</small></p>
+                                <p class="mb-0"><small>${formatTimestampForUser(loc.timestamp)}</small></p>
                                 ${index > 0 ? `<hr class="my-2"><small class="text-muted">Point ${index + 1} of ${deviceLocs.length}</small>` : ''}
                             </div>
                         `);
@@ -900,7 +923,7 @@
                                         <h6><i class="fas fa-mobile-alt me-1"></i>${loc.device_name}</h6>
                                         <p class="mb-1" style="color: ${markerColor}"><strong>${title}</strong></p>
                                         <p class="mb-1">${Number(latNum).toFixed(6)}, ${Number(lngNum).toFixed(6)}</p>
-                                        <p class="mb-0"><small>${new Date(loc.timestamp).toLocaleString('en-US', {timeZone: 'America/Chicago', hour12: true})} CST</small></p>
+                                        <p class="mb-0"><small>${formatTimestampForUser(loc.timestamp)}</small></p>
                                     </div>
                                 `);
                             markers.push(marker);

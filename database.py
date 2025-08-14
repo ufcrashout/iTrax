@@ -102,6 +102,22 @@ class Database:
                     # Columns already exist, which is fine
                     pass
                 
+                # User settings table
+                cursor.execute("""CREATE TABLE IF NOT EXISTS user_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    timezone VARCHAR(50) NOT NULL DEFAULT 'America/Chicago',
+                    date_format VARCHAR(20) DEFAULT '%Y-%m-%d %I:%M:%S %p',
+                    theme VARCHAR(20) DEFAULT 'light',
+                    map_default_zoom INT DEFAULT 10,
+                    refresh_interval INT DEFAULT 300,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                    UNIQUE KEY unique_user_settings (user_id),
+                    INDEX idx_user_id (user_id)
+                ) ENGINE=InnoDB""")
+                
                 # Devices table
                 cursor.execute("""CREATE TABLE IF NOT EXISTS devices (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -1148,6 +1164,137 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to cleanup old notifications: {e}")
             return 0
+    
+    def get_user_settings(self, username: str) -> Dict:
+        """Get user settings, creating defaults if none exist"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get user ID
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+                if not user:
+                    return self._get_default_settings()
+                
+                user_id = user['id']
+                
+                # Get existing settings
+                cursor.execute("""
+                    SELECT timezone, date_format, theme, map_default_zoom, refresh_interval 
+                    FROM user_settings WHERE user_id = %s
+                """, (user_id,))
+                settings = cursor.fetchone()
+                
+                if settings:
+                    return dict(settings)
+                else:
+                    # Create default settings for user
+                    default_settings = self._get_default_settings()
+                    self.update_user_settings(username, default_settings)
+                    return default_settings
+                    
+        except Exception as e:
+            logger.error(f"Failed to get user settings for {username}: {e}")
+            return self._get_default_settings()
+    
+    def update_user_settings(self, username: str, settings: Dict) -> bool:
+        """Update user settings"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get user ID
+                cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                user = cursor.fetchone()
+                if not user:
+                    return False
+                
+                user_id = user['id']
+                
+                # Insert or update settings
+                cursor.execute("""
+                    INSERT INTO user_settings 
+                    (user_id, timezone, date_format, theme, map_default_zoom, refresh_interval)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                    timezone = VALUES(timezone),
+                    date_format = VALUES(date_format), 
+                    theme = VALUES(theme),
+                    map_default_zoom = VALUES(map_default_zoom),
+                    refresh_interval = VALUES(refresh_interval),
+                    updated_at = CURRENT_TIMESTAMP
+                """, (
+                    user_id,
+                    settings.get('timezone', 'America/Chicago'),
+                    settings.get('date_format', '%Y-%m-%d %I:%M:%S %p'),
+                    settings.get('theme', 'light'),
+                    settings.get('map_default_zoom', 10),
+                    settings.get('refresh_interval', 300)
+                ))
+                
+                logger.info(f"Updated settings for user {username}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to update user settings for {username}: {e}")
+            return False
+    
+    def _get_default_settings(self) -> Dict:
+        """Get default user settings"""
+        return {
+            'timezone': 'America/Chicago',
+            'date_format': '%Y-%m-%d %I:%M:%S %p',
+            'theme': 'light',
+            'map_default_zoom': 10,
+            'refresh_interval': 300
+        }
+    
+    def get_available_timezones(self) -> List[Dict]:
+        """Get list of available timezones grouped by region"""
+        import pytz
+        
+        timezone_groups = {
+            'US & Canada': [
+                ('America/New_York', 'Eastern Time'),
+                ('America/Chicago', 'Central Time'), 
+                ('America/Denver', 'Mountain Time'),
+                ('America/Phoenix', 'Arizona Time'),
+                ('America/Los_Angeles', 'Pacific Time'),
+                ('America/Anchorage', 'Alaska Time'),
+                ('Pacific/Honolulu', 'Hawaii Time'),
+                ('America/Toronto', 'Toronto'),
+                ('America/Vancouver', 'Vancouver')
+            ],
+            'Europe': [
+                ('Europe/London', 'London'),
+                ('Europe/Paris', 'Paris'),
+                ('Europe/Berlin', 'Berlin'),
+                ('Europe/Rome', 'Rome'),
+                ('Europe/Madrid', 'Madrid'),
+                ('Europe/Amsterdam', 'Amsterdam'),
+                ('Europe/Zurich', 'Zurich'),
+                ('Europe/Moscow', 'Moscow')
+            ],
+            'Asia Pacific': [
+                ('Asia/Tokyo', 'Tokyo'),
+                ('Asia/Shanghai', 'Shanghai'),
+                ('Asia/Singapore', 'Singapore'),
+                ('Asia/Hong_Kong', 'Hong Kong'),
+                ('Asia/Seoul', 'Seoul'),
+                ('Asia/Kolkata', 'India'),
+                ('Australia/Sydney', 'Sydney'),
+                ('Australia/Melbourne', 'Melbourne')
+            ],
+            'Other': [
+                ('UTC', 'UTC/GMT'),
+                ('America/Sao_Paulo', 'São Paulo'),
+                ('Africa/Cairo', 'Cairo'),
+                ('Africa/Johannesburg', 'Johannesburg')
+            ]
+        }
+        
+        return timezone_groups
 
 # Global database instance
 db = Database()

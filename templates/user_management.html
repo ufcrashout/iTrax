@@ -401,8 +401,8 @@
                                     </div>
                                     <div class="col-md-3">
                                         <small class="text-muted">
-                                            <i class="fas fa-calendar me-1"></i>Created: {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else 'N/A' }}<br>
-                                            <i class="fas fa-sign-in-alt me-1"></i>Last Login: {{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}
+                                            <i class="fas fa-calendar me-1"></i>Created: {{ user.created_at | user_timezone if user.created_at else 'N/A' }}<br>
+                                            <i class="fas fa-sign-in-alt me-1"></i>Last Login: {{ user.last_login | user_timezone if user.last_login else 'Never' }}
                                         </small>
                                     </div>
                                     <div class="col-md-4 text-end">

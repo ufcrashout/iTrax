@@ -586,7 +586,7 @@
                                 </td>
                                 <td>
                                     <div class="timestamp-text">
-                                        {{ log.timestamp | to_cst }}
+                                        {{ log.timestamp | user_timezone }}
                                     </div>
                                 </td>
                                 <td>
@@ -641,7 +641,7 @@
                                 </td>
                                 <td>
                                     <div class="timestamp-text">
-                                        {{ log.created_at | to_cst }}
+                                        {{ log.created_at | user_timezone }}
                                     </div>
                                 </td>
                             </tr>

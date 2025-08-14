@@ -19,6 +19,10 @@ from cache import (
     location_cache, analytics_cache, dashboard_cache, notification_cache,
     cached_query, invalidate_location_cache, QueryTimer, get_all_cache_stats
 )
+from timezone_utils import (
+    convert_utc_to_user_timezone, convert_local_to_utc, format_datetime_for_user,
+    get_current_time_in_timezone, validate_timezone
+)
 import hashlib
 import time
 from flask import g
@@ -99,34 +103,8 @@ def convert_to_cst(timestamp_str):
         # Return a more informative error for debugging
         return f"Error converting: {timestamp_str}"
 
-# Template filters for timezone conversion
-@app.template_filter('to_cst')
-def to_cst_filter(timestamp_str):
-    """Template filter to convert timestamp to CST"""
-    try:
-        if not timestamp_str:
-            return "No timestamp"
-        cst_dt = convert_to_cst(timestamp_str)
-        if isinstance(cst_dt, str):  # Error case
-            return cst_dt
-        return cst_dt.strftime('%Y-%m-%d %I:%M:%S %p CST')
-    except Exception as e:
-        logger.warning(f"Template filter error for timestamp {timestamp_str}: {e}")
-        return f"Error: {timestamp_str}"
-
-@app.template_filter('to_cst_date')
-def to_cst_date_filter(timestamp_str):
-    """Template filter to convert timestamp to CST date only"""
-    try:
-        if not timestamp_str:
-            return "No date"
-        cst_dt = convert_to_cst(timestamp_str)
-        if isinstance(cst_dt, str):  # Error case
-            return cst_dt
-        return cst_dt.strftime('%Y-%m-%d')
-    except Exception as e:
-        logger.warning(f"Template date filter error for timestamp {timestamp_str}: {e}")
-        return f"Error: {timestamp_str}"
+# Legacy timezone conversion functions (deprecated - kept for backward compatibility)
+# Note: These functions are replaced by timezone_utils module
 
 @app.template_filter('number_format')
 def number_format_filter(value):
@@ -152,7 +130,6 @@ def route_exists(endpoint):
 def inject_timezone_functions():
     return dict(
         get_cst_now=get_cst_now,
-        convert_to_cst=convert_to_cst,
         route_exists=route_exists
     )
 
@@ -219,6 +196,44 @@ def after_request(response):
         else:
             logger.debug(f"REQUEST: {request.endpoint} took {duration:.3f}s")
     return response
+
+# Template filters for timezone conversion
+@app.template_filter('user_timezone')
+def user_timezone_filter(dt):
+    """Convert UTC datetime to user's timezone"""
+    try:
+        if current_user.is_authenticated:
+            user_settings = db.get_user_settings(current_user.id)
+            return format_datetime_for_user(dt, user_settings.get('timezone', 'America/Chicago'), 
+                                          user_settings.get('date_format', '%Y-%m-%d %I:%M:%S %p'))
+        else:
+            # Default formatting for non-authenticated users
+            return format_datetime_for_user(dt, 'America/Chicago', '%Y-%m-%d %I:%M:%S %p')
+    except Exception as e:
+        logger.error(f"Error in timezone filter: {e}")
+        # Fallback to string representation
+        return str(dt) if dt else ''
+
+@app.template_filter('simple_timezone')
+def simple_timezone_filter(dt, timezone_str='America/Chicago'):
+    """Simple timezone conversion with specified timezone"""
+    try:
+        return format_datetime_for_user(dt, timezone_str, '%Y-%m-%d %I:%M:%S %p')
+    except Exception as e:
+        logger.error(f"Error in simple timezone filter: {e}")
+        return str(dt) if dt else ''
+
+# Context processor to make user settings available in all templates
+@app.context_processor
+def inject_user_settings():
+    """Make user settings available in all templates"""
+    if current_user.is_authenticated:
+        try:
+            user_settings = db.get_user_settings(current_user.id)
+            return {'user_settings': user_settings}
+        except:
+            return {'user_settings': db._get_default_settings()}
+    return {'user_settings': db._get_default_settings()}
 
 # User class for Flask-Login
 class User(UserMixin):
@@ -301,6 +316,56 @@ def logout():
     logout_user()
     flash('You have been logged out successfully.', 'success')
     return redirect(url_for('login'))
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def settings():
+    """User settings page"""
+    try:
+        if request.method == 'POST':
+            # Get form data
+            timezone = request.form.get('timezone', 'America/Chicago')
+            date_format = request.form.get('date_format', '%Y-%m-%d %I:%M:%S %p')
+            theme = request.form.get('theme', 'light')
+            map_default_zoom = int(request.form.get('map_default_zoom', 10))
+            refresh_interval = int(request.form.get('refresh_interval', 300))
+            
+            # Validate timezone
+            if not validate_timezone(timezone):
+                flash('Invalid timezone selected.', 'error')
+                return redirect(url_for('settings'))
+            
+            # Prepare settings dict
+            settings_data = {
+                'timezone': timezone,
+                'date_format': date_format,
+                'theme': theme,
+                'map_default_zoom': map_default_zoom,
+                'refresh_interval': refresh_interval
+            }
+            
+            # Update user settings
+            if db.update_user_settings(current_user.id, settings_data):
+                flash('Settings updated successfully!', 'success')
+                logger.info(f"User {current_user.id} updated settings")
+                db.log_message("INFO", f"User {current_user.id} updated settings", "webapp")
+            else:
+                flash('Failed to update settings. Please try again.', 'error')
+            
+            return redirect(url_for('settings'))
+        
+        # GET request - show settings form
+        current_settings = db.get_user_settings(current_user.id)
+        timezone_groups = db.get_available_timezones()
+        
+        return render_template('settings.html',
+                             current_settings=current_settings,
+                             timezone_groups=timezone_groups)
+        
+    except Exception as e:
+        logger.error(f"Error in settings page: {e}")
+        flash('An error occurred while loading settings.', 'error')
+        return redirect(url_for('dashboard'))
 
 @app.route('/')
 @login_required
@@ -628,7 +693,7 @@ def heatmap_overview():
                 cursor.execute('''
                     SELECT DISTINCT device_name 
                     FROM locations 
-                    WHERE timestamp >= date('now', '-365 days')
+                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 365 DAY)
                     ORDER BY device_name
                 ''')
                 available_devices = [row[0] for row in cursor.fetchall()]
@@ -711,12 +776,12 @@ def historical_playback():
                 cursor.execute('''
                     SELECT DISTINCT device_name 
                     FROM locations 
-                    WHERE timestamp >= date('now', '-30 days')
+                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                     ORDER BY device_name
                 ''')
                 available_devices = [row[0] for row in cursor.fetchall()]
         except Exception as e:
-            logger.error(f"Error getting device list for playback: {e}")
+            logger.error(f"Error getting device list for playbook: {e}")
         
         return render_template('playback.html',
                              selected_device=device_name,
@@ -770,7 +835,7 @@ def geofences_overview():
                 cursor.execute('''
                     SELECT DISTINCT device_name 
                     FROM locations 
-                    WHERE timestamp >= date('now', '-30 days')
+                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                     ORDER BY device_name
                 ''')
                 available_devices = [row[0] for row in cursor.fetchall()]
@@ -780,7 +845,7 @@ def geofences_overview():
                     cursor.execute('''
                         SELECT latitude, longitude
                         FROM locations 
-                        WHERE timestamp >= date('now', '-7 days')
+                        WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
                         ORDER BY timestamp DESC
                         LIMIT 10
                     ''')
@@ -899,7 +964,7 @@ def notifications_overview():
                 cursor.execute('''
                     SELECT DISTINCT device_name 
                     FROM locations 
-                    WHERE timestamp >= date('now', '-30 days')
+                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                     ORDER BY device_name
                 ''')
                 available_devices = [row[0] for row in cursor.fetchall()]
@@ -1122,7 +1187,7 @@ def search_overview():
                 cursor.execute('''
                     SELECT DISTINCT device_name 
                     FROM locations 
-                    WHERE timestamp >= date('now', '-365 days')
+                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 365 DAY)
                     ORDER BY device_name
                 ''')
                 available_devices = [row[0] for row in cursor.fetchall()]

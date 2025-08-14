@@ -572,8 +572,8 @@
                                                 </div>
                                                 <div class="small text-muted">
                                                     <i class="fas fa-clock me-1"></i>
-                                                    First: {{ location.first_visit | to_cst_date }}<br>
-                                                    Last: {{ location.last_visit | to_cst_date }}
+                                                    First: {{ location.first_visit | user_timezone }}<br>
+                                                    Last: {{ location.last_visit | user_timezone }}
                                                 </div>
                                             </div>
                                             <button class="btn btn-sm btn-outline-primary" 
