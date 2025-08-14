@@ -6,10 +6,10 @@ Flask-Compress==1.13
 pyicloud==1.0.0
 WTForms==3.0.1
 python-dotenv==1.0.0
-Werkzeug<3.0
+Werkzeug<4.0
 pytz
 geopy
 folium
 requests
-PyMySQL==1.1.0
+PyMySQL==1.1.1
 mysqlclient==2.2.0 
