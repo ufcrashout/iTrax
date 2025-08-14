@@ -16,16 +16,17 @@
 
 ## 🌟 Overview
 
-iTrax is a powerful, secure web application that provides comprehensive location tracking and analytics for iPhone devices through the iCloud Find My service. Built with Flask and featuring a modern, responsive interface, iTrax offers real-time location monitoring, advanced analytics, geofencing, notifications, and much more.
+iTrax is a powerful, enterprise-grade web application that provides comprehensive location tracking and analytics for iPhone devices through the iCloud Find My service. Built with Flask and featuring a modern, responsive interface, iTrax offers real-time location monitoring, advanced analytics, geofencing, notifications, and much more.
 
 ### ✨ Key Highlights
 
 - 🔐 **Enterprise-grade security** with CSRF protection and session management
 - 📊 **Advanced analytics** with address resolution and location intelligence
-- 🗺️ **Interactive mapping** with multiple visualization modes
+- 🗺️ **Interactive mapping** with multiple visualization modes and performance optimizations
 - 🏠 **Geofencing & alerts** for location-based notifications
-- 📱 **Responsive design** that works on all devices
-- 🚀 **Easy deployment** with systemd service integration
+- 📱 **Mobile-first responsive design** that works perfectly on all devices
+- 🚀 **High-performance architecture** with multi-level caching and optimization
+- ⚡ **Real-time notifications** across all pages with prefetching system
 
 ---
 
@@ -50,22 +51,26 @@ iTrax is a powerful, secure web application that provides comprehensive location
 - **Historical location data** with unlimited retention options
 - **Automatic reconnection** and error recovery
 - **Smart rate limiting** with exponential backoff
+- **High-performance caching** for faster data retrieval
 
 ### 🗺️ Interactive Dashboard
-- **Live location map** with Leaflet.js integration
+- **Live location map** with Leaflet.js integration and Canvas rendering
 - **Device clustering** to avoid overlapping markers
 - **Movement paths** showing travel routes between locations
 - **Time-based filtering** (24-hour, custom date ranges)
 - **Device filtering** to focus on specific devices
 - **Auto-refresh** every 5 minutes with manual refresh option
+- **Performance-optimized rendering** with lazy loading and marker batching
+- **Mobile-first responsive design** with touch-optimized controls
 
 ### 📊 Advanced Analytics
-- **Address resolution** using reverse geocoding
+- **Address resolution** using reverse geocoding with intelligent caching
 - **Time spent analysis** at each location
 - **Distance calculations** and travel patterns
 - **Location grouping** by proximity
 - **Statistical insights** and device summaries
 - **Export capabilities** (JSON, CSV, KML formats)
+- **High-performance database queries** with optimization
 
 ### 🔥 Location Heatmaps
 - **Interactive heatmap visualization** showing frequently visited areas
@@ -89,19 +94,20 @@ iTrax is a powerful, secure web application that provides comprehensive location
 - **Device-specific geofence rules** or global rules
 - **Geofence event history** with detailed logs
 - **Visual geofence overlay** on maps
+- **Smart map centering** based on existing geofences
 
-### 🔔 Smart Notifications & In-Browser Alerts
+### 🔔 Smart Notifications & Real-Time Alerts
 - **Site-wide real-time notifications** - Works on every page, not just dashboard
 - **Global notification bell** with unread count in navigation bar on all pages
 - **Interactive notification dropdown** with mark as read functionality
 - **Consistent cross-page experience** - Same notification system across all views
 - **Rule-based notification system** with multiple triggers
-- **Geofence entry/exit alerts** for specific locations
+- **Geofence entry/exit alerts** for specific locations (bug-free MySQL implementation)
 - **Device activity notifications** for movement detection
 - **Multiple delivery methods** (browser, email, webhook, SMS)
 - **Priority-based notifications** (low, normal, high, urgent)
 - **Visual notification indicators** with color coding and animations
-- **Notification history** with delivery status tracking
+- **Comprehensive notification history** with advanced filtering and pagination
 - **Auto-polling** for new notifications every 30 seconds on all pages
 - **Customizable notification rules** per device
 - **Mark all as read** functionality
@@ -126,11 +132,14 @@ iTrax is a powerful, secure web application that provides comprehensive location
 
 ### 📋 GPS Logs Viewer
 - **Raw location data browser** with filtering capabilities
-- **Pagination support** for large datasets
+- **Pagination support** for large datasets with performance optimization
+- **3-page address prefetching system** for instant navigation
 - **Device filtering** and date range selection
 - **Location coordinate display** with precision
 - **Timestamp information** in local timezone
 - **Data export** functionality for analysis
+- **Smart address loading** with caching and anticipatory loading
+- **Mobile-responsive table** with touch-friendly controls
 
 ### 👥 User Management System (Admin Only)
 - **Complete user account management** with web interface
@@ -149,11 +158,23 @@ iTrax is a powerful, secure web application that provides comprehensive location
 ## 🛠️ Technical Architecture
 
 ### 📊 Database System
-- **SQLite database** for reliable data storage
+- **MySQL/MariaDB database** for enterprise-grade reliable data storage
 - **Automatic migrations** from legacy JSON data
 - **Built-in backup system** with configurable retention
 - **Database optimization tools** for performance
 - **Comprehensive logging** with structured data
+- **Advanced indexing** for high-performance queries
+- **Multi-level caching system** with intelligent TTL management
+
+### ⚡ Performance Optimizations
+- **Advanced caching system** with PerformanceCache class and automatic cleanup
+- **Database query optimization** with cached decorators and query timing
+- **Response compression** with Flask-Compress (gzip, level 6)
+- **Performance monitoring middleware** with request timing and slow query detection
+- **Frontend optimizations** with lazy loading and Canvas rendering
+- **Map performance enhancements** with marker batching and layer grouping
+- **3-page address prefetching** for GPS logs with intelligent caching
+- **Cache statistics endpoint** for monitoring and debugging
 
 ### 🔧 API Endpoints
 - **RESTful API design** with consistent response formats
@@ -167,6 +188,7 @@ iTrax is a powerful, secure web application that provides comprehensive location
 # System & Monitoring
 GET  /api/health           - System health check
 GET  /api/stats            - Location and device statistics
+GET  /api/cache-stats      - Cache performance statistics
 GET  /api/devices          - List of tracked devices
 GET  /api/logs             - Application logs
 
@@ -190,6 +212,7 @@ DEL  /api/notification-rules/<id> - Delete rule
 GET  /api/recent-notifications - Recent notification history
 GET  /api/notifications     - Get user notifications (with filtering)
 GET  /api/notifications/count - Get unread notification count
+GET  /api/notifications/all - Comprehensive notification history with pagination
 PUT  /api/notifications/<id>/read - Mark notification as read
 PUT  /api/notifications/mark-all-read - Mark all notifications as read
 POST /api/notifications     - Create notification (testing/system)
@@ -216,8 +239,9 @@ DEL  /api/users/<username> - Delete user
 - **Location tracker service** with automatic recovery
 - **Database cleanup service** for old data management
 - **Session management** with automatic renewal
-- **Geofence monitoring** with real-time violation detection
+- **Geofence monitoring** with real-time violation detection (MySQL optimized)
 - **Notification delivery system** with retry logic
+- **Cache management** with automatic cleanup and statistics
 
 ---
 
@@ -225,6 +249,7 @@ DEL  /api/users/<username> - Delete user
 
 ### 📋 Prerequisites
 - Python 3.8 or higher
+- MySQL or MariaDB server
 - iCloud account with Find My enabled
 - Network access for iCloud API calls
 
@@ -241,7 +266,15 @@ DEL  /api/users/<username> - Delete user
    pip install -r requirements.txt
    ```
 
-3. **Configure environment variables**
+3. **Set up MySQL database**
+   ```sql
+   CREATE DATABASE itrax CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   CREATE USER 'itrax_user'@'localhost' IDENTIFIED BY 'secure_password';
+   GRANT ALL PRIVILEGES ON itrax.* TO 'itrax_user'@'localhost';
+   FLUSH PRIVILEGES;
+   ```
+
+4. **Configure environment variables**
    ```bash
    cp env_example.txt .env
    ```
@@ -257,10 +290,11 @@ DEL  /api/users/<username> - Delete user
    ADMIN_USERNAME=admin
    ADMIN_PASSWORD=your_secure_password
    
-   # Database Configuration
+   # MySQL Database Configuration
    DB_HOST=localhost
-   DB_USER=root
-   DB_PASSWORD=your_db_password
+   DB_PORT=3306
+   DB_USER=itrax_user
+   DB_PASSWORD=secure_password
    DB_NAME=itrax
    DATABASE_CLEANUP_DAYS=30
    DATABASE_BACKUP_RETENTION=5
@@ -276,7 +310,7 @@ DEL  /api/users/<username> - Delete user
    SMTP_PASSWORD=your_email_password
    ```
 
-4. **Generate secure secret key**
+5. **Generate secure secret key**
    ```python
    import secrets
    print(secrets.token_hex(32))
@@ -322,12 +356,13 @@ sudo systemctl status itrax
 - **Web Interface**: http://localhost:5000
 - **Default Login**: admin / (your configured password)
 - **Health Check**: http://localhost:5000/api/health
+- **Cache Statistics**: http://localhost:5000/api/cache-stats (requires login)
 
 ---
 
 ## 🔧 Database Management
 
-iTrax uses SQLite for robust data storage with comprehensive management tools.
+iTrax uses MySQL/MariaDB for robust, enterprise-grade data storage with comprehensive management tools.
 
 ### 🛠️ Database Tools
 
@@ -363,9 +398,21 @@ python database_tools.py revoke-admin --username john        # Revoke admin
 | `logs` | Application logging | `id`, `level`, `message`, `timestamp`, `source` |
 | `geofences` | Geofence definitions | `id`, `name`, `center_lat`, `center_lng`, `radius` |
 | `geofence_events` | Geofence violations | `id`, `geofence_id`, `device_name`, `event_type` |
+| `device_geofence_status` | Geofence entry/exit status | `device_name`, `geofence_id`, `is_inside` |
 | `notification_rules` | Alert configurations | `id`, `name`, `trigger_type`, `delivery_method` |
 | `notifications` | Notification history | `id`, `rule_id`, `message`, `delivered_at` |
 | `bookmarks` | Saved locations | `id`, `name`, `latitude`, `longitude`, `description` |
+| `address_cache` | Geocoded address cache | `latitude`, `longitude`, `address`, `cached_at` |
+
+### 🚀 Performance Indexes
+
+The database includes optimized indexes for high-performance queries:
+- `idx_device_timestamp` - Fast device-specific location queries
+- `idx_timestamp_desc` - Chronological data retrieval
+- `idx_composite_analytics` - Multi-column analytics queries
+- `idx_geofence_coords` - Spatial geofence queries
+- `idx_notifications_user_read` - Notification filtering
+- `idx_address_cache_coords` - Address lookup optimization
 
 ---
 
@@ -384,10 +431,11 @@ python database_tools.py revoke-admin --username john        # Revoke admin
 | `MAX_DELAY` | Max rate limit delay | `3600` | `1800` (30 minutes) |
 | `DATABASE_CLEANUP_DAYS` | Data retention period | `30` | `90` |
 | `DATABASE_BACKUP_RETENTION` | Backup file count | `5` | `10` |
-| `DB_HOST` | Database host | `localhost` | `mysql.example.com` |
-| `DB_USER` | Database user | `root` | `itrax_user` |
-| `DB_PASSWORD` | Database password | Required | `db_password` |
-| `DB_NAME` | Database name | `itrax` | `location_db` |
+| `DB_HOST` | MySQL host | `localhost` | `mysql.example.com` |
+| `DB_PORT` | MySQL port | `3306` | `3306` |
+| `DB_USER` | MySQL user | `root` | `itrax_user` |
+| `DB_PASSWORD` | MySQL password | Required | `db_password` |
+| `DB_NAME` | MySQL database name | `itrax` | `location_db` |
 
 ### 📱 Device Configuration
 
@@ -402,19 +450,21 @@ python database_tools.py revoke-admin --username john        # Revoke admin
 
 ### 📊 Dashboard
 The main dashboard provides:
-- **Real-time map** showing current device locations
+- **Real-time map** showing current device locations with performance-optimized rendering
 - **Movement tracking** with 24-hour path visualization
 - **Device statistics** including location count and last update
 - **Quick filters** for date ranges and specific devices
 - **Auto-refresh** functionality with manual refresh option
+- **Mobile-first responsive design** with touch-optimized controls
 
 ### 📈 Analytics
 Access comprehensive analytics for each device:
-- **Location timeline** with address resolution
+- **Location timeline** with address resolution and caching
 - **Time spent analysis** at each location
 - **Travel distance calculations**
 - **Daily activity patterns**
 - **Data export** in JSON, CSV, or KML formats
+- **High-performance queries** with optimization
 
 ### 🔥 Heatmaps
 Visualize location patterns:
@@ -434,8 +484,9 @@ Review historical movement:
 Set up location-based alerts:
 - **Click-and-drag creation** directly on the map
 - **Configurable radius** from 50m to 10km
-- **Entry/exit notifications** with immediate alerts
+- **Entry/exit notifications** with immediate alerts (MySQL optimized)
 - **Event history** with detailed logs
+- **Smart map centering** based on existing geofences and recent locations
 
 ### 🔔 Notifications
 Configure smart alerts:
@@ -443,6 +494,8 @@ Configure smart alerts:
 - **Delivery methods**: email, webhook, SMS (with configuration)
 - **Device-specific rules** or global notifications
 - **Delivery status tracking** with retry logic
+- **Comprehensive notification history** with advanced filtering
+- **Real-time notifications** across all pages
 
 ### 🔍 Search & Bookmarks
 Find and save locations:
@@ -450,6 +503,14 @@ Find and save locations:
 - **Coordinate lookup** for precise locations
 - **Bookmark system** for frequently accessed places
 - **Nearby search** within configurable radius
+
+### 📋 GPS Logs
+Browse raw location data:
+- **3-page address prefetching** for instant navigation
+- **Advanced filtering** by device and date range
+- **Smart address loading** with caching system
+- **Mobile-responsive interface** with touch controls
+- **Performance optimization** for large datasets
 
 ---
 
@@ -476,7 +537,7 @@ Find and save locations:
 ### 📝 Security Best Practices
 - **Never commit credentials** - Use environment variables
 - **Enable 2FA** on your iCloud account
-- **Use strong passwords** for admin access
+- **Use strong passwords** for admin access and database
 - **Regular security updates** for dependencies
 - **Network security** - Run on trusted networks only
 - **Database backups** with secure storage
@@ -548,14 +609,14 @@ rm -f session_cache.json
 
 #### Database Issues
 ```bash
-# Check database integrity
-python database_tools.py integrity
+# Check database connectivity
+python database_tools.py stats
 
 # Optimize database
 python database_tools.py optimize
 
-# View database stats
-python database_tools.py stats
+# Check database integrity
+mysql -u itrax_user -p -e "CHECK TABLE itrax.locations;"
 ```
 
 #### Performance Issues
@@ -566,7 +627,12 @@ python database_tools.py cleanup --days 30
 # Optimize database
 python database_tools.py optimize
 
+# Check cache performance
+curl http://localhost:5000/api/cache-stats
+
 # Check disk space and memory usage
+df -h
+free -m
 ```
 
 ### 📊 Monitoring
@@ -574,6 +640,11 @@ python database_tools.py optimize
 #### Health Check
 ```bash
 curl http://localhost:5000/api/health
+```
+
+#### Cache Statistics
+```bash
+curl http://localhost:5000/api/cache-stats
 ```
 
 #### Log Analysis
@@ -586,6 +657,9 @@ python database_tools.py logs --limit 100
 
 # System logs (if using systemd)
 journalctl -u itrax -f
+
+# MySQL logs
+sudo tail -f /var/log/mysql/error.log
 ```
 
 ---
@@ -595,11 +669,14 @@ journalctl -u itrax -f
 ### 🧪 Development Setup
 ```bash
 # Clone and setup
-git clone 
+git clone https://github.com/ufcrashout/iTrax.git
 cd iTrax
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
+# Setup MySQL database
+# ... (create database and user as shown in installation)
 
 # Setup development environment
 cp env_example.txt .env
@@ -613,11 +690,12 @@ python app.py
 ### 🏗️ Project Structure
 ```
 iTrax/
-├── 📄 app.py                 # Main Flask application
+├── 📄 app.py                 # Main Flask application with performance optimizations
 ├── 📄 tracker.py             # iCloud location tracker
 ├── 📄 analytics.py           # Advanced analytics module
-├── 📄 database.py            # Database management
+├── 📄 database.py            # Database management with MySQL/caching
 ├── 📄 database_tools.py      # Database utilities
+├── 📄 cache.py               # Advanced caching system
 ├── 📄 start.py               # Application launcher
 ├── 📄 config.py              # Configuration management
 ├── 📄 gps_maintenance.py     # GPS data maintenance
@@ -626,15 +704,16 @@ iTrax/
 ├── 📄 icloud-tracker.service # Systemd service file
 ├── 📄 README.md              # This documentation
 ├── 📂 templates/             # HTML templates
-│   ├── 🎨 dashboard.html     # Main dashboard
+│   ├── 🎨 dashboard.html     # Main dashboard with mobile optimization
 │   ├── 🎨 analytics.html     # Analytics interface
 │   ├── 🎨 heatmap.html       # Heatmap visualization
 │   ├── 🎨 playback.html      # Historical playback
 │   ├── 🎨 geofences.html     # Geofence management
 │   ├── 🎨 notifications.html # Notification rules
+│   ├── 🎨 all_notifications.html # Comprehensive notification history
 │   ├── 🎨 search.html        # Search & bookmarks
 │   ├── 🎨 reports.html       # Travel reports
-│   ├── 🎨 gps_logs.html      # GPS log viewer
+│   ├── 🎨 gps_logs.html      # GPS log viewer with 3-page prefetching
 │   ├── 🎨 device_analytics.html # Device-specific analytics
 │   ├── 🎨 user_management.html # User management (admin)
 │   ├── 🎨 login.html         # Login page
@@ -643,21 +722,22 @@ iTrax/
 ├── 📂 static/                # Static assets
 │   └── 📂 js/                # JavaScript files
 │       └── 📄 notifications.js # Cross-page notification system
-└── 📊 itrax.db               # SQLite database (auto-created)
+└── 📊 MySQL Database         # MySQL/MariaDB database
 ```
 
 ### 🔧 Technology Stack
-- **Backend**: Python 3.8+, Flask 2.0+
-- **Database**: SQLite 3 (with MySQL support)
-- **Frontend**: HTML5, CSS3, JavaScript (ES6+)
-- **Mapping**: Leaflet.js with OpenStreetMap
+- **Backend**: Python 3.8+, Flask 2.0+, Flask-Compress, Flask-Limiter
+- **Database**: MySQL 8.0+ / MariaDB 10.5+ with advanced indexing
+- **Caching**: Multi-level caching with PerformanceCache class
+- **Frontend**: HTML5, CSS3, JavaScript (ES6+) with performance optimization
+- **Mapping**: Leaflet.js with OpenStreetMap and Canvas rendering
 - **Charts**: Chart.js for analytics visualization
-- **Styling**: Bootstrap 5 for responsive design
+- **Styling**: Bootstrap 5 for responsive design with mobile-first approach
 - **Authentication**: Flask-Login with session management
 - **Security**: Flask-WTF for CSRF protection
-- **Rate Limiting**: Flask-Limiter
-- **Geocoding**: Geopy with Nominatim
-- **Notifications**: SMTP, Webhooks
+- **Rate Limiting**: Flask-Limiter with Redis support
+- **Geocoding**: Geopy with Nominatim and intelligent caching
+- **Notifications**: SMTP, Webhooks with real-time updates
 
 ---
 
@@ -682,6 +762,10 @@ python database_tools.py stats
 
 # Test API endpoints
 curl http://localhost:5000/api/health
+curl http://localhost:5000/api/cache-stats
+
+# Test cache performance
+python -c "from cache import get_all_cache_stats; print(get_all_cache_stats())"
 ```
 
 ### 📝 Code Standards
@@ -690,6 +774,7 @@ curl http://localhost:5000/api/health
 - Include docstrings for functions and classes
 - Write comprehensive commit messages
 - Test all new features thoroughly
+- Consider performance impact of changes
 
 ---
 
@@ -711,6 +796,7 @@ The developers are not responsible for any misuse of this application.
 - Comply with all applicable laws and regulations
 - Use the application responsibly and ethically
 - Secure your installation and credentials properly
+- Regularly backup your MySQL database
 
 ---
 
@@ -725,7 +811,7 @@ The developers are not responsible for any misuse of this application.
 
 <div align="center">
 
-**iTrax** - *Comprehensive Location Intelligence Platform*
+**iTrax** - *Enterprise-Grade Location Intelligence Platform*
 
 *Created with ⚡︎ by UF Cra⚡︎hOut*
 
