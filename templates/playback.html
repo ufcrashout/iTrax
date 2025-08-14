@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Playback - iTrax</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { background-color: #f8f9fa; }
+        .navbar { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        .navbar-brand, .nav-link { color: white !important; }
+        .nav-link:hover { color: #e3f2fd !important; }
+        .main-content { padding: 2rem 0; }
+        .card { 
+            border: none; border-radius: 15px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08); 
+            margin-bottom: 1.5rem;
+        }
+        .card-header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border-radius: 15px 15px 0 0 !important; border: none; 
+        }
+        #map { height: 500px; border-radius: 15px; }
+        .playback-controls {
+            background: white; border-radius: 15px; padding: 1.5rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08); margin: 1rem 0;
+        }
+        .timeline-container {
+            padding: 1rem; background: #f8f9fa; border-radius: 10px;
+            margin: 1rem 0;
+        }
+        .timeline-slider {
+            width: 100%; margin: 1rem 0;
+        }
+        .btn-play { 
+            background: linear-gradient(135deg, #28a745 0%, #34ce57 100%);
+            border: none; border-radius: 10px; color: white; min-width: 100px;
+        }
+        .btn-play:hover { 
+            transform: translateY(-1px); box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+            color: white;
+        }
+        .btn-pause { 
+            background: linear-gradient(135deg, #ffc107 0%, #ffcd39 100%);
+            border: none; border-radius: 10px; color: #333; min-width: 100px;
+        }
+        .btn-pause:hover { 
+            transform: translateY(-1px); box-shadow: 0 5px 15px rgba(255, 193, 7, 0.4);
+            color: #333;
+        }
+        .btn-reset { 
+            background: linear-gradient(135deg, #dc3545 0%, #e85563 100%);
+            border: none; border-radius: 10px; color: white;
+        }
+        .btn-reset:hover { 
+            transform: translateY(-1px); box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+            color: white;
+        }
+        .playback-info {
+            background: #e3f2fd; border-radius: 10px; padding: 1rem; margin: 1rem 0;
+            border-left: 4px solid #2196f3;
+        }
+        .device-track {
+            padding: 0.5rem; margin: 0.25rem 0; border-radius: 8px;
+            display: flex; justify-content: between; align-items: center;
+        }
+        .device-indicator {
+            width: 12px; height: 12px; border-radius: 50%; 
+            display: inline-block; margin-right: 8px;
+        }
+        .speed-controls {
+            display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0;
+        }
+        .speed-btn {
+            border: 2px solid #667eea; background: white; color: #667eea;
+            border-radius: 20px; padding: 0.25rem 0.75rem; font-size: 0.8rem;
+        }
+        .speed-btn.active {
+            background: #667eea; color: white;
+        }
+        .loading-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(248, 249, 250, 0.9); display: flex; 
+            align-items: center; justify-content: center; z-index: 1000;
+            border-radius: 15px;
+        }
+        .current-time-display {
+            background: #667eea; color: white; padding: 0.5rem 1rem;
+            border-radius: 20px; font-weight: bold; min-width: 200px;
+            text-align: center;
+        }
+        /* Notification Styles */
+        .notification-bell {
+            position: relative;
+            cursor: pointer;
+        }
+        .notification-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 10px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: none;
+        }
+        .notification-badge-animate {
+            animation: pulse 0.5s ease-in-out;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .notification-dropdown {
+            min-width: 350px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .notification-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .notification-item:last-child {
+            border-bottom: none;
+        }
+        .notification-item:hover {
+            background-color: #f8f9fa;
+        }
+        .notification-item.unread {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .notification-item.read {
+            opacity: 0.8;
+        }
+        .notification-item.priority-urgent {
+            border-left-color: #dc3545 !important;
+        }
+        .notification-item.priority-high {
+            border-left-color: #fd7e14 !important;
+        }
+        .notification-item.priority-normal {
+            border-left-color: #2196f3 !important;
+        }
+        .notification-item.priority-low {
+            border-left-color: #6c757d !important;
+        }
+        
+        /* Mobile Responsive Styles */
+        @media (max-width: 991.98px) {
+            .navbar-nav {
+                padding: 1rem 0;
+            }
+            .navbar-nav .nav-link {
+                padding: 0.75rem 1rem;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            .navbar-nav .nav-link:last-child {
+                border-bottom: none;
+            }
+            .notification-dropdown {
+                min-width: 300px !important;
+                max-width: 320px !important;
+            }
+            .navbar-text {
+                padding: 0.75rem 1rem;
+                border-top: 1px solid rgba(255,255,255,0.1);
+                margin: 0 !important;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            #map {
+                height: 300px;
+            }
+            .main-content {
+                padding: 1rem 0;
+            }
+            .stats-card {
+                margin-bottom: 0.75rem;
+                padding: 1rem;
+            }
+            .stats-number {
+                font-size: 1.75rem;
+            }
+            .card {
+                margin-bottom: 1rem;
+            }
+            .notification-dropdown {
+                min-width: 280px !important;
+                max-width: 300px !important;
+                margin-right: -1rem;
+            }
+            .playback-controls {
+                padding: 1rem;
+            }
+            .current-time-display {
+                font-size: 0.9rem;
+                min-width: 160px;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            #map {
+                height: 250px;
+            }
+            .stats-number {
+                font-size: 1.5rem;
+            }
+            .notification-dropdown {
+                min-width: 260px !important;
+                max-width: 280px !important;
+                margin-right: -1.5rem;
+            }
+            .btn {
+                padding: 0.625rem 1.25rem;
+                font-size: 0.875rem;
+            }
+            .card-header h5, .card-header h6 {
+                font-size: 1rem;
+            }
+            /* Touch-friendly form elements */
+            .form-control, .form-select, .btn {
+                min-height: 44px;
+            }
+            .current-time-display {
+                font-size: 0.8rem;
+                min-width: 140px;
+                padding: 0.4rem 0.8rem;
+            }
+            .speed-controls {
+                justify-content: center;
+            }
+            .speed-btn {
+                font-size: 0.75rem;
+                padding: 0.2rem 0.6rem;
+            }
+        }
+
+        /* Touch optimizations for map */
+        .leaflet-container {
+            font-size: 14px;
+        }
+
+        .leaflet-control-zoom a {
+            width: 36px;
+            height: 36px;
+            line-height: 36px;
+            font-size: 18px;
+        }
+
+        .leaflet-touch .leaflet-control-attribution {
+            font-size: 11px;
+        }
+
+        /* Improved notification dropdown for mobile */
+        @media (max-width: 991.98px) {
+            .notification-dropdown .dropdown-header button {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-map-marker-alt me-2"></i>iTrax
+            </a>
+            
+            <!-- Mobile Hamburger Button -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Collapsible Navigation -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-map me-1"></i>Dashboard
+                </a>
+                <a class="nav-link" href="{{ url_for('analytics_dashboard') }}">
+                    <i class="fas fa-chart-line me-1"></i>Analytics
+                </a>
+                <a class="nav-link" href="{{ url_for('heatmap_overview') }}">
+                    <i class="fas fa-fire me-1"></i>Heatmap
+                </a>
+                <a class="nav-link active" href="{{ url_for('historical_playback') }}">
+                    <i class="fas fa-play me-1"></i>Playback
+                </a>
+                <a class="nav-link" href="{{ url_for('geofences_overview') }}">
+                    <i class="fas fa-shield-alt me-1"></i>Geofences
+                </a>
+                <a class="nav-link" href="{{ url_for('notifications_overview') }}">
+                    <i class="fas fa-bell me-1"></i>Notifications
+                </a>
+                <a class="nav-link" href="{{ url_for('search_overview') }}">
+                    <i class="fas fa-search me-1"></i>Search
+                </a>
+                <a class="nav-link" href="{{ url_for('travel_reports') }}">
+                    <i class="fas fa-file-alt me-1"></i>Reports
+                </a>
+                {% if route_exists('gps_logs') %}
+                <a class="nav-link" href="{{ url_for('gps_logs') }}">
+                    <i class="fas fa-list me-1"></i>GPS Logs
+                </a>
+                {% endif %}
+                <!-- Notification Bell -->
+                <div class="nav-item dropdown me-3">
+                    <a class="nav-link notification-bell" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-badge" id="notificationBadge">0</span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown">
+                        <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                            <h6 class="mb-0">Notifications</h6>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary me-2" onclick="markAllNotificationsRead()">
+                                    <i class="fas fa-check-double"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadAllNotifications()">
+                                    <i class="fas fa-list"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="notificationList">
+                            <div class="dropdown-item-text text-center text-muted py-4">
+                                <i class="fas fa-spinner fa-spin fa-2x mb-2"></i><br>
+                                Loading notifications...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user me-1"></i>{{ current_user.id }}
+                </span>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container main-content">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'info-circle' }} me-2"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Header and Filters -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h3 class="mb-1">
+                                    <i class="fas fa-play me-2"></i>Historical Playback
+                                </h3>
+                                <p class="mb-0 opacity-75">Watch device movements unfold over time</p>
+                            </div>
+                            <div>
+                                <form method="get" class="d-flex flex-column flex-md-row align-items-stretch align-items-md-center" id="playbackForm">
+                                    <div class="d-grid d-md-block mb-2 mb-md-0">
+                                        <select class="form-select me-md-2 mb-2 mb-md-0" name="device" onchange="updateFilters()">
+                                            <option value="">All Devices</option>
+                                            {% for device in available_devices %}
+                                                <option value="{{ device }}" 
+                                                        {{ 'selected' if selected_device == device else '' }}>
+                                                    {{ device }}
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                        <input type="date" class="form-control me-md-2 mb-2 mb-md-0" name="start_date" 
+                                               value="{{ start_date }}" onchange="updateFilters()">
+                                        <input type="date" class="form-control me-md-2 mb-2 mb-md-0" name="end_date" 
+                                               value="{{ end_date }}" onchange="updateFilters()">
+                                        <button type="button" class="btn btn-primary" onclick="loadPlaybackData()">
+                                            <i class="fas fa-sync-alt me-1"></i>Load
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Map -->
+            <div class="col-lg-9 mb-4 mb-lg-0">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-route me-2"></i>Movement Animation
+                        </h5>
+                    </div>
+                    <div class="card-body p-0 position-relative">
+                        <div id="loading" class="loading-overlay" style="display: none;">
+                            <div class="text-center">
+                                <div class="spinner-border mb-3" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mb-0">Loading playback data...</p>
+                            </div>
+                        </div>
+                        <div id="map"></div>
+                    </div>
+                </div>
+
+                <!-- Playback Controls -->
+                <div class="playback-controls">
+                    <div class="row align-items-center">
+                        <div class="col-sm-6 col-md-3 mb-3 mb-md-0">
+                            <div class="d-flex align-items-center justify-content-center justify-content-sm-start">
+                                <button id="playBtn" class="btn btn-play me-2" onclick="togglePlayback()">
+                                    <i class="fas fa-play me-1"></i>Play
+                                </button>
+                                <button id="resetBtn" class="btn btn-reset" onclick="resetPlayback()">
+                                    <i class="fas fa-stop me-1"></i>Reset
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-sm-12 col-md-6 mb-3 mb-md-0">
+                            <div class="timeline-container">
+                                <input type="range" class="form-range timeline-slider" 
+                                       id="timelineSlider" min="0" max="100" value="0" 
+                                       oninput="seekToPosition(this.value)">
+                                <div class="d-flex justify-content-between">
+                                    <small id="startTime">00:00:00</small>
+                                    <small id="endTime">23:59:59</small>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-md-3">
+                            <div class="current-time-display text-center" id="currentTimeDisplay">
+                                Ready to play
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Speed Controls -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="d-flex justify-content-center">
+                                <div class="speed-controls">
+                                    <span class="me-2">Speed:</span>
+                                    <button class="speed-btn" onclick="setPlaybackSpeed(0.5)">0.5x</button>
+                                    <button class="speed-btn active" onclick="setPlaybackSpeed(1)">1x</button>
+                                    <button class="speed-btn" onclick="setPlaybackSpeed(2)">2x</button>
+                                    <button class="speed-btn" onclick="setPlaybackSpeed(5)">5x</button>
+                                    <button class="speed-btn" onclick="setPlaybackSpeed(10)">10x</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Panel -->
+            <div class="col-lg-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-info-circle me-2"></i>Playback Info
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="playbackStats">
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-play-circle fa-3x mb-3 opacity-25"></i>
+                                <p>Load data to start playback</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Device Tracks -->
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-mobile-alt me-2"></i>Device Tracks
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="deviceTracks">
+                            <div class="text-center text-muted py-4">
+                                <i class="fas fa-mobile-alt fa-2x mb-2 opacity-25"></i>
+                                <p>No devices loaded</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Instructions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-question-circle me-2"></i>How It Works
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="small">
+                            <p><strong>🎬 Play/Pause:</strong> Start or stop the animation</p>
+                            <p><strong>🎯 Timeline:</strong> Drag the slider to jump to any time</p>
+                            <p><strong>⚡ Speed:</strong> Adjust playback speed from 0.5x to 10x</p>
+                            <p><strong>🔄 Reset:</strong> Return to the beginning</p>
+                            <p><strong>📱 Devices:</strong> Different colored dots for each device</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-2">&copy; 2025 <strong>iTrax by UF Cra⚡︎hOut</strong>. All rights reserved.</p>
+            <p class="mb-0 text-muted">Location tracking and analytics platform</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Global variables
+        let map;
+        let playbackData = null;
+        let currentIndex = 0;
+        let isPlaying = false;
+        let playbackInterval = null;
+        let playbackSpeed = 1;
+        let deviceMarkers = {};
+        let devicePaths = {};
+        let deviceColors = {};
+        let colorPalette = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD'];
+
+        // Initialize map
+        function initializeMap() {
+            map = L.map('map').setView([37.7749, -122.4194], 13);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Load playback data from API
+        async function loadPlaybackData() {
+            const form = document.getElementById('playbackForm');
+            const formData = new FormData(form);
+            
+            const device = formData.get('device') || '';
+            const startDate = formData.get('start_date');
+            const endDate = formData.get('end_date');
+            
+            document.getElementById('loading').style.display = 'flex';
+            
+            try {
+                const response = await fetch(`/api/playback/data?device=${device}&start_date=${startDate}&end_date=${endDate}`);
+                const data = await response.json();
+                
+                if (data.error) {
+                    alert('Error: ' + data.error);
+                    return;
+                }
+                
+                playbackData = data;
+                setupPlayback();
+                updatePlaybackInfo();
+                
+            } catch (error) {
+                console.error('Error loading playback data:', error);
+                alert('Failed to load playback data');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Setup playback with loaded data
+        function setupPlayback() {
+            if (!playbackData) return;
+            
+            // Clear existing markers and paths
+            clearMap();
+            
+            // Assign colors to devices
+            let colorIndex = 0;
+            for (const deviceName in playbackData.device_tracks) {
+                deviceColors[deviceName] = colorPalette[colorIndex % colorPalette.length];
+                colorIndex++;
+            }
+            
+            // Create device markers and initialize paths
+            for (const deviceName in playbackData.device_tracks) {
+                const color = deviceColors[deviceName];
+                
+                // Create marker
+                deviceMarkers[deviceName] = L.circleMarker([0, 0], {
+                    radius: 8,
+                    fillColor: color,
+                    color: 'white',
+                    weight: 2,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+                
+                // Create path line
+                devicePaths[deviceName] = L.polyline([], {
+                    color: color,
+                    weight: 3,
+                    opacity: 0.7
+                }).addTo(map);
+                
+                // Hide initially
+                deviceMarkers[deviceName].setOpacity(0);
+            }
+            
+            // Set map view
+            if (playbackData.center_lat && playbackData.center_lng) {
+                map.setView([playbackData.center_lat, playbackData.center_lng], 13);
+            }
+            
+            // Reset playback state
+            currentIndex = 0;
+            isPlaying = false;
+            updateControls();
+            
+            // Set timeline
+            const slider = document.getElementById('timelineSlider');
+            slider.max = playbackData.all_points_chronological.length - 1;
+            slider.value = 0;
+            
+            if (playbackData.all_points_chronological.length > 0) {
+                document.getElementById('startTime').textContent = playbackData.start_time;
+                document.getElementById('endTime').textContent = playbackData.end_time;
+            }
+        }
+
+        // Clear map markers and paths
+        function clearMap() {
+            for (const deviceName in deviceMarkers) {
+                map.removeLayer(deviceMarkers[deviceName]);
+                map.removeLayer(devicePaths[deviceName]);
+            }
+            deviceMarkers = {};
+            devicePaths = {};
+        }
+
+        // Toggle playback
+        function togglePlayback() {
+            if (!playbackData || playbackData.all_points_chronological.length === 0) {
+                alert('Please load playback data first');
+                return;
+            }
+            
+            if (isPlaying) {
+                pausePlayback();
+            } else {
+                startPlayback();
+            }
+        }
+
+        // Start playback
+        function startPlayback() {
+            if (!playbackData) return;
+            
+            isPlaying = true;
+            playbackInterval = setInterval(() => {
+                if (currentIndex >= playbackData.all_points_chronological.length - 1) {
+                    pausePlayback();
+                    return;
+                }
+                
+                currentIndex++;
+                updateMapPosition();
+                updateTimeline();
+                
+            }, 1000 / playbackSpeed);
+            
+            updateControls();
+        }
+
+        // Pause playback
+        function pausePlayback() {
+            isPlaying = false;
+            if (playbackInterval) {
+                clearInterval(playbackInterval);
+                playbackInterval = null;
+            }
+            updateControls();
+        }
+
+        // Reset playback
+        function resetPlayback() {
+            pausePlayback();
+            currentIndex = 0;
+            clearPaths();
+            updateMapPosition();
+            updateTimeline();
+        }
+
+        // Clear all path traces
+        function clearPaths() {
+            for (const deviceName in devicePaths) {
+                devicePaths[deviceName].setLatLngs([]);
+            }
+        }
+
+        // Update map position for current time index
+        function updateMapPosition() {
+            if (!playbackData || currentIndex >= playbackData.all_points_chronological.length) return;
+            
+            // Get all points up to current index
+            const currentPoints = playbackData.all_points_chronological.slice(0, currentIndex + 1);
+            const currentPoint = playbackData.all_points_chronological[currentIndex];
+            
+            // Update device positions and build paths
+            const deviceLatestPoints = {};
+            const devicePathPoints = {};
+            
+            // Initialize path arrays
+            for (const deviceName in playbackData.device_tracks) {
+                devicePathPoints[deviceName] = [];
+            }
+            
+            // Build paths from all points up to current time
+            for (const point of currentPoints) {
+                deviceLatestPoints[point.device_name] = point;
+                devicePathPoints[point.device_name].push([point.latitude, point.longitude]);
+            }
+            
+            // Update markers and paths
+            for (const deviceName in deviceMarkers) {
+                if (deviceLatestPoints[deviceName]) {
+                    const point = deviceLatestPoints[deviceName];
+                    deviceMarkers[deviceName].setLatLng([point.latitude, point.longitude]);
+                    deviceMarkers[deviceName].setOpacity(1);
+                    devicePaths[deviceName].setLatLngs(devicePathPoints[deviceName]);
+                    
+                    // Update popup
+                    deviceMarkers[deviceName].bindPopup(`
+                        <div class="text-center">
+                            <h6><i class="fas fa-mobile-alt me-1"></i>${point.device_name}</h6>
+                            <p class="mb-1">${point.timestamp_cst}</p>
+                            <p class="mb-0"><small>${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}</small></p>
+                        </div>
+                    `);
+                } else {
+                    deviceMarkers[deviceName].setOpacity(0);
+                }
+            }
+            
+            // Update current time display
+            if (currentPoint) {
+                document.getElementById('currentTimeDisplay').textContent = currentPoint.timestamp_cst;
+            }
+        }
+
+        // Update timeline slider
+        function updateTimeline() {
+            const slider = document.getElementById('timelineSlider');
+            slider.value = currentIndex;
+        }
+
+        // Seek to specific position
+        function seekToPosition(value) {
+            if (!playbackData) return;
+            
+            currentIndex = parseInt(value);
+            updateMapPosition();
+        }
+
+        // Set playback speed
+        function setPlaybackSpeed(speed) {
+            playbackSpeed = speed;
+            
+            // Update active button
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+            
+            // Restart interval if playing
+            if (isPlaying) {
+                pausePlayback();
+                startPlayback();
+            }
+        }
+
+        // Update control buttons
+        function updateControls() {
+            const playBtn = document.getElementById('playBtn');
+            if (isPlaying) {
+                playBtn.innerHTML = '<i class="fas fa-pause me-1"></i>Pause';
+                playBtn.classList.remove('btn-play');
+                playBtn.classList.add('btn-pause');
+            } else {
+                playBtn.innerHTML = '<i class="fas fa-play me-1"></i>Play';
+                playBtn.classList.remove('btn-pause');
+                playBtn.classList.add('btn-play');
+            }
+        }
+
+        // Update playback info panel
+        function updatePlaybackInfo() {
+            if (!playbackData) return;
+            
+            document.getElementById('playbackStats').innerHTML = `
+                <div class="mb-3">
+                    <div class="row">
+                        <div class="col-6 text-center">
+                            <div class="fw-bold text-primary">${playbackData.total_points}</div>
+                            <small class="text-muted">Total Points</small>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="fw-bold text-success">${playbackData.device_count}</div>
+                            <small class="text-muted">Devices</small>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-12 text-center">
+                            <div class="fw-bold text-info">${playbackData.time_span_hours}h</div>
+                            <small class="text-muted">Time Span</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="playback-info">
+                    <small>
+                        <strong>Period:</strong> ${playbackData.date_range}<br>
+                        <strong>From:</strong> ${playbackData.start_time}<br>
+                        <strong>To:</strong> ${playbackData.end_time}
+                    </small>
+                </div>
+            `;
+            
+            // Update device tracks
+            let deviceTracksHtml = '';
+            for (const deviceName in playbackData.device_tracks) {
+                const color = deviceColors[deviceName];
+                const pointCount = playbackData.device_tracks[deviceName].length;
+                
+                deviceTracksHtml += `
+                    <div class="device-track">
+                        <div class="d-flex align-items-center">
+                            <span class="device-indicator" style="background-color: ${color}"></span>
+                            <div>
+                                <div class="fw-bold">${deviceName}</div>
+                                <small class="text-muted">${pointCount} points</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            document.getElementById('deviceTracks').innerHTML = deviceTracksHtml;
+        }
+
+        // Update filters and reload
+        function updateFilters() {
+            // Just update the form, user clicks Load to apply
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeMap();
+            loadPlaybackData(); // Auto-load with default parameters
+        });
+    </script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+</body>
+</html>

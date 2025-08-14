@@ -1,0 +1,19 @@
+# iCloud Credentials
+ICLOUD_EMAIL=your_icloud_email@icloud.com
+ICLOUD_PASSWORD=your_icloud_password
+
+# Flask Configuration
+SECRET_KEY=your_secret_key_here
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your_secure_password
+
+# MariaDB Configuration
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=icloud_app
+DB_PASSWORD=your_secure_mariadb_password
+DB_NAME=icloud_tracker
+
+# Tracking Configuration (optional)
+TRACKING_INTERVAL=600
+MAX_DELAY=3600 

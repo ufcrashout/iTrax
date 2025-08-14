@@ -1,0 +1,24 @@
+[Unit]
+Description=iTrax Service
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=username
+Group=username
+WorkingDirectory=/home/username/iTrax
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 /home/username/iTrax/start.py
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=itrax
+
+# Security settings (relaxed for troubleshooting)
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
