@@ -575,7 +575,13 @@
     <script>
         // Performance optimized map initialization
         var locations = {{ location_history | tojson }};
-        var userSettings = {{ user_settings | tojson }};
+        var userSettings = {{ user_settings | tojson | safe }} || {
+            timezone: 'America/Chicago',
+            date_format: '%Y-%m-%d %I:%M:%S %p',
+            theme: 'light',
+            map_default_zoom: 10,
+            refresh_interval: 300
+        };
         var markers = [];
         var polylines = [];
         var deviceColors = {};
@@ -673,7 +679,6 @@
                 deviceLocations[loc.device_name].push(loc);
             }
         }
-        });
 
         // Performance optimized marker and path rendering
         function renderDeviceData() {
@@ -855,80 +860,34 @@
             fetch('/api/locations?' + params.toString())
                 .then(response => response.json())
                 .then(data => {
-                    // Clear existing markers
-                    markers.forEach(marker => map.removeLayer(marker));
+                    // Clear existing markers and polylines
+                    markers.forEach(marker => markersLayer.removeLayer(marker));
                     markers = [];
                     polylines.forEach(line => map.removeLayer(line));
                     polylines = [];
 
-                    // Rebuild per-device grouping and paths like initial render
-                    var refreshedDeviceColors = {};
-                    var refreshedDeviceLocations = {};
-                    var colorPalette = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD'];
-                    var colorIndex = 0;
-                    data.forEach(function(loc) {
-                        if (!refreshedDeviceLocations[loc.device_name]) {
-                            refreshedDeviceLocations[loc.device_name] = [];
-                            refreshedDeviceColors[loc.device_name] = colorPalette[colorIndex % colorPalette.length];
-                            colorIndex++;
-                        }
-                        refreshedDeviceLocations[loc.device_name].push(loc);
-                    });
-
-                    Object.keys(refreshedDeviceLocations).forEach(function(deviceName) {
-                        var deviceLocs = refreshedDeviceLocations[deviceName].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-                        var deviceColor = refreshedDeviceColors[deviceName];
-
-                        if (deviceLocs.length > 1) {
-                            var pathCoords = deviceLocs.map(loc => [parseFloat(loc.latitude), parseFloat(loc.longitude)]).filter(function(p){
-                                return Number.isFinite(p[0]) && Number.isFinite(p[1]);
-                            });
-                            var polyline = L.polyline(pathCoords, { color: deviceColor, weight: 3, opacity: 0.7, dashArray: '5, 5' }).addTo(map);
-                            polylines.push(polyline);
-                            polyline.bindPopup(`
-                                <div class="text-center">
-                                    <h6><i class="fas fa-route me-1"></i>Movement Path</h6>
-                                    <p class="mb-1"><strong>${deviceName}</strong></p>
-                                    <p class="mb-0"><small>${deviceLocs.length} locations tracked</small></p>
-                                </div>
-                            `);
-                        }
-
-                        deviceLocs.forEach(function(loc, index) {
-                            var isFirst = index === 0;
-                            var isLast = index === deviceLocs.length - 1;
-                            var markerColor = deviceColor;
-                            var iconHtml = '';
-                            var title = '';
-
-                            if (isFirst) {
-                                iconHtml = `<div style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;"><i class=\"fas fa-play\" style=\"color: white; font-size: 8px;\"></i></div>`;
-                                title = 'Start Location';
-                            } else if (isLast) {
-                                iconHtml = `<div style="background-color: ${markerColor}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;"><i class=\"fas fa-stop\" style=\"color: white; font-size: 8px;\"></i></div>`;
-                                title = 'Latest Location';
-                            } else {
-                                iconHtml = `<div style=\"background-color: ${markerColor}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 3px rgba(0,0,0,0.3); opacity: 0.8;\"></div>`;
-                                title = 'Movement Point';
+                    // Update global locations data with new data
+                    locations = data;
+                    
+                    // Rebuild device grouping
+                    deviceLocations = {};
+                    deviceColors = {};
+                    colorIndex = 0;
+                    
+                    if (locations && locations.length > 0) {
+                        for (var i = 0; i < locations.length; i++) {
+                            var loc = locations[i];
+                            if (!deviceLocations[loc.device_name]) {
+                                deviceLocations[loc.device_name] = [];
+                                deviceColors[loc.device_name] = colorPalette[colorIndex % colorPalette.length];
+                                colorIndex++;
                             }
+                            deviceLocations[loc.device_name].push(loc);
+                        }
+                    }
 
-                            var customIcon = L.divIcon({ className: 'custom-marker', html: iconHtml, iconSize: [20, 20], iconAnchor: [10, 10] });
-                            var latNum = parseFloat(loc.latitude);
-                            var lngNum = parseFloat(loc.longitude);
-                            if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return;
-                            var marker = L.marker([latNum, lngNum], { icon: customIcon })
-                                .addTo(map)
-                                .bindPopup(`
-                                    <div class="text-center">
-                                        <h6><i class="fas fa-mobile-alt me-1"></i>${loc.device_name}</h6>
-                                        <p class="mb-1" style="color: ${markerColor}"><strong>${title}</strong></p>
-                                        <p class="mb-1">${Number(latNum).toFixed(6)}, ${Number(lngNum).toFixed(6)}</p>
-                                        <p class="mb-0"><small>${formatTimestampForUser(loc.timestamp)}</small></p>
-                                    </div>
-                                `);
-                            markers.push(marker);
-                        });
-                    });
+                    // Re-render all device data using existing function
+                    renderDeviceData();
 
                     if (markers.length > 0) {
                         var group = new L.featureGroup(markers);

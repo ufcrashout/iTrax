@@ -4,7 +4,11 @@ from functools import wraps
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from flask_compress import Compress
+try:
+    from flask_compress import Compress
+    COMPRESS_AVAILABLE = True
+except ImportError:
+    COMPRESS_AVAILABLE = False
 import json
 import os
 import logging
@@ -173,6 +177,14 @@ login_manager.login_view = 'login'
 login_manager.session_protection = 'strong'
 login_manager.remember_cookie_duration = timedelta(days=30)
 
+# Enable response compression if available
+if COMPRESS_AVAILABLE:
+    compress = Compress()
+    compress.init_app(app)
+    logger.info("Flask-Compress initialized")
+else:
+    logger.info("Running without compression - install Flask-Compress for better performance")
+
 # Rate limiting
 limiter = Limiter(
     app=app,
@@ -202,16 +214,28 @@ def after_request(response):
 def user_timezone_filter(dt):
     """Convert UTC datetime to user's timezone"""
     try:
+        if not dt:
+            return ''
+        
         if current_user.is_authenticated:
-            user_settings = db.get_user_settings(current_user.id)
-            return format_datetime_for_user(dt, user_settings.get('timezone', 'America/Chicago'), 
-                                          user_settings.get('date_format', '%Y-%m-%d %I:%M:%S %p'))
+            try:
+                user_settings = db.get_user_settings(current_user.id)
+                return format_datetime_for_user(dt, user_settings.get('timezone', 'America/Chicago'), 
+                                              user_settings.get('date_format', '%Y-%m-%d %I:%M:%S %p'))
+            except:
+                # Fallback to default timezone if user settings fail
+                return format_datetime_for_user(dt, 'America/Chicago', '%Y-%m-%d %I:%M:%S %p')
         else:
             # Default formatting for non-authenticated users
             return format_datetime_for_user(dt, 'America/Chicago', '%Y-%m-%d %I:%M:%S %p')
     except Exception as e:
         logger.error(f"Error in timezone filter: {e}")
-        # Fallback to string representation
+        # Fallback to simple string representation
+        if hasattr(dt, 'strftime'):
+            try:
+                return dt.strftime('%Y-%m-%d %H:%M:%S')
+            except:
+                pass
         return str(dt) if dt else ''
 
 @app.template_filter('simple_timezone')
@@ -227,13 +251,22 @@ def simple_timezone_filter(dt, timezone_str='America/Chicago'):
 @app.context_processor
 def inject_user_settings():
     """Make user settings available in all templates"""
+    default_settings = {
+        'timezone': 'America/Chicago',
+        'date_format': '%Y-%m-%d %I:%M:%S %p',
+        'theme': 'light',
+        'map_default_zoom': 10,
+        'refresh_interval': 300
+    }
+    
     if current_user.is_authenticated:
         try:
             user_settings = db.get_user_settings(current_user.id)
             return {'user_settings': user_settings}
-        except:
-            return {'user_settings': db._get_default_settings()}
-    return {'user_settings': db._get_default_settings()}
+        except Exception as e:
+            logger.debug(f"Error getting user settings: {e}")
+            return {'user_settings': default_settings}
+    return {'user_settings': default_settings}
 
 # User class for Flask-Login
 class User(UserMixin):
