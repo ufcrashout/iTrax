@@ -232,7 +232,7 @@ DEL  /api/users/<username> - Delete user
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/ufcrashout/iTrax.git
    cd iTrax
    ```
 
@@ -595,7 +595,7 @@ journalctl -u itrax -f
 ### 🧪 Development Setup
 ```bash
 # Clone and setup
-git clone <repo-url>
+git clone 
 cd iTrax
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
