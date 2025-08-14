@@ -727,8 +727,8 @@ The developers are not responsible for any misuse of this application.
 
 **iTrax** - *Comprehensive Location Intelligence Platform*
 
-*Created with ❤️ by UF Cra⚡︎hOut*
+*Created with ⚡︎ by UF Cra⚡︎hOut*
 
-[⭐ Star this project](https://github.com/your-username/iTrax) • [🐛 Report Bug](https://github.com/your-username/iTrax/issues) • [💡 Request Feature](https://github.com/your-username/iTrax/issues)
+[⭐ Star this project](https://github.com/ufcrashout/iTrax) • [🐛 Report Bug](https://github.com/ufcrashout/iTrax/issues) • [💡 Request Feature](https://github.com/ufcrashout/iTrax/issues)
 
 </div>
