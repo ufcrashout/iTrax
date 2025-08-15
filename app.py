@@ -1,4 +1,5 @@
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, session
+from werkzeug.routing import BuildError
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from functools import wraps
 from flask_wtf.csrf import CSRFProtect
@@ -126,7 +127,7 @@ def route_exists(endpoint):
     try:
         url_for(endpoint)
         return True
-    except:
+    except (AttributeError, BuildError):
         return False
 
 # Make functions available in templates
@@ -224,7 +225,7 @@ def user_timezone_filter(dt):
                 user_settings = db.get_user_settings(current_user.id)
                 return format_datetime_for_user(dt, user_settings.get('timezone', 'America/Chicago'), 
                                               user_settings.get('date_format', '%Y-%m-%d %I:%M:%S %p'))
-            except:
+            except (AttributeError, KeyError, ValueError, TypeError):
                 # Fallback to default timezone if user settings fail
                 return format_datetime_for_user(dt, 'America/Chicago', '%Y-%m-%d %I:%M:%S %p')
         else:
@@ -236,7 +237,7 @@ def user_timezone_filter(dt):
         if hasattr(dt, 'strftime'):
             try:
                 return dt.strftime('%Y-%m-%d %H:%M:%S')
-            except:
+            except (ValueError, AttributeError):
                 pass
         return str(dt) if dt else ''
 
@@ -1547,7 +1548,7 @@ def gps_logs():
                                             log['address'] = full_address
                                             # Cache the result for future use
                                             db.cache_address(log['latitude'], log['longitude'], full_address)
-                                    except:
+                                    except (ValueError, KeyError, TypeError, Exception):
                                         pass  # Keep coordinate format on API failure
                         except Exception as e:
                             logger.debug(f"Could not process address for {log['latitude']}, {log['longitude']}: {e}")
@@ -1584,7 +1585,7 @@ def gps_logs():
                             enhanced_log['address'] = full_address
                             # Cache for future use
                             db.cache_address(enhanced_log['latitude'], enhanced_log['longitude'], full_address)
-                    except:
+                    except (ValueError, KeyError, TypeError, Exception):
                         pass  # Keep existing format if geocoding fails
                 
                 enhanced_logs.append(enhanced_log)

@@ -276,7 +276,7 @@ class LocationAnalytics:
             try:
                 date_key = loc['timestamp'][:10]  # YYYY-MM-DD
                 daily_stats[date_key].append(loc)
-            except:
+            except (KeyError, TypeError, IndexError):
                 continue
         
         # Calculate stats per day

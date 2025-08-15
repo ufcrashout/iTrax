@@ -506,7 +506,7 @@ class Database:
             if isinstance(time2, str):
                 time2 = datetime.fromisoformat(time2.replace('Z', '+00:00'))
             return abs((time2 - time1).total_seconds() / 3600)
-        except:
+        except (ValueError, TypeError, AttributeError):
             return 0
     
     @cached_query(location_cache, ttl=300)  # Cache for 5 minutes
@@ -720,7 +720,7 @@ class Database:
                     cursor.execute("SELECT COUNT(*) as cache_size FROM address_cache")
                     cache_stats = cursor.fetchone()
                     cache_size = cache_stats['cache_size'] if cache_stats else 0
-                except:
+                except (pymysql.Error, KeyError, TypeError):
                     cache_size = 0
                 
                 return {
