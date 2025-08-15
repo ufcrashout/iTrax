@@ -107,8 +107,8 @@ def convert_to_cst(timestamp_str):
         # Return a more informative error for debugging
         return f"Error converting: {timestamp_str}"
 
-# Legacy timezone conversion functions (deprecated - kept for backward compatibility)
-# Note: These functions are replaced by timezone_utils module
+# Legacy timezone conversion functions (deprecated - gradually being replaced by timezone_utils module)
+# Note: These functions still in use by some routes, consider migrating to user-specific timezone handling
 
 @app.template_filter('number_format')
 def number_format_filter(value):
@@ -154,10 +154,12 @@ def serialize_location_row(row: dict) -> dict:
             return str(val) if val is not None else None
         except Exception:
             return None
+    device_name = row.get('device_name')
     return {
         'id': row.get('id'),
         'device_id': row.get('device_id'),
-        'device_name': row.get('device_name'),
+        'device_name': device_name,
+        'display_name': db.get_device_display_name(device_name) if device_name else device_name,
         'latitude': to_float(row.get('latitude')),
         'longitude': to_float(row.get('longitude')),
         'timestamp': to_iso(row.get('timestamp')),
@@ -237,6 +239,17 @@ def user_timezone_filter(dt):
             except:
                 pass
         return str(dt) if dt else ''
+
+@app.template_filter('device_display_name')
+def device_display_name_filter(device_name):
+    """Template filter to display device nickname if available, otherwise device name"""
+    try:
+        if not device_name:
+            return device_name
+        return db.get_device_display_name(device_name)
+    except Exception as e:
+        logger.error(f"Error getting device display name for {device_name}: {e}")
+        return device_name
 
 @app.template_filter('simple_timezone')
 def simple_timezone_filter(dt, timezone_str='America/Chicago'):
@@ -807,12 +820,14 @@ def historical_playback():
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT DISTINCT device_name 
-                    FROM locations 
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                    ORDER BY device_name
+                    SELECT DISTINCT l.device_name,
+                           COALESCE(d.nickname, l.device_name) as display_name
+                    FROM locations l 
+                    LEFT JOIN devices d ON l.device_name = d.device_name
+                    WHERE l.device_name IS NOT NULL AND l.device_name != ''
+                    ORDER BY display_name
                 ''')
-                available_devices = [row[0] for row in cursor.fetchall()]
+                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting device list for playbook: {e}")
         
@@ -866,12 +881,14 @@ def geofences_overview():
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT DISTINCT device_name 
-                    FROM locations 
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                    ORDER BY device_name
+                    SELECT DISTINCT l.device_name,
+                           COALESCE(d.nickname, l.device_name) as display_name
+                    FROM locations l 
+                    LEFT JOIN devices d ON l.device_name = d.device_name
+                    WHERE l.device_name IS NOT NULL AND l.device_name != ''
+                    ORDER BY display_name
                 ''')
-                available_devices = [row[0] for row in cursor.fetchall()]
+                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
                 
                 # Get recent device locations for map centering (if no geofences exist)
                 if not geofences:
@@ -995,12 +1012,14 @@ def notifications_overview():
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT DISTINCT device_name 
-                    FROM locations 
-                    WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                    ORDER BY device_name
+                    SELECT DISTINCT l.device_name,
+                           COALESCE(d.nickname, l.device_name) as display_name
+                    FROM locations l 
+                    LEFT JOIN devices d ON l.device_name = d.device_name
+                    WHERE l.device_name IS NOT NULL AND l.device_name != ''
+                    ORDER BY display_name
                 ''')
-                available_devices = [row[0] for row in cursor.fetchall()]
+                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting device list for notifications: {e}")
         
@@ -2033,9 +2052,11 @@ def api_get_notifications():
         # Format notifications for JSON response
         formatted_notifications = []
         for notification in notifications:
+            device_name = notification['device_name']
             formatted_notifications.append({
                 'id': notification['id'],
-                'device_name': notification['device_name'],
+                'device_name': device_name,
+                'display_name': db.get_device_display_name(device_name) if device_name else device_name,
                 'message': notification['message'],
                 'timestamp': notification['timestamp'].isoformat() if notification['timestamp'] else None,
                 'is_read': bool(notification['is_read']),
@@ -2161,6 +2182,143 @@ def api_create_notification():
             'success': False,
             'error': 'Failed to create notification'
         }), 500
+
+# Device Nickname Management API Endpoints
+@app.route('/api/devices/nicknames', methods=['GET'])
+@login_required
+def api_get_device_nicknames():
+    """Get all devices with their nicknames"""
+    try:
+        devices = db.get_all_devices_with_nicknames()
+        return jsonify({
+            'success': True,
+            'devices': devices
+        })
+    except Exception as e:
+        logger.error(f"Error getting device nicknames: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to get device nicknames'
+        }), 500
+
+@app.route('/api/devices/<device_name>/nickname', methods=['PUT'])
+@login_required
+def api_set_device_nickname(device_name):
+    """Set or update a device nickname"""
+    try:
+        data = request.get_json()
+        nickname = data.get('nickname', '').strip()
+        
+        if not nickname:
+            return jsonify({
+                'success': False,
+                'error': 'Nickname cannot be empty'
+            }), 400
+        
+        success = db.set_device_nickname(device_name, nickname)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Nickname set successfully for {device_name}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to set nickname'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error setting device nickname: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to set device nickname'
+        }), 500
+
+@app.route('/api/devices/<device_name>/nickname', methods=['DELETE'])
+@login_required
+def api_remove_device_nickname(device_name):
+    """Remove a device nickname"""
+    try:
+        success = db.remove_device_nickname(device_name)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Nickname removed for {device_name}'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to remove nickname'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error removing device nickname: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to remove device nickname'
+        }), 500
+
+@app.route('/device-management')
+@login_required
+def device_management():
+    """Device management page with nickname editing"""
+    try:
+        devices = db.get_all_devices_with_nicknames()
+        return render_template('device_management.html', devices=devices)
+    except Exception as e:
+        logger.error(f"Error loading device management page: {e}")
+        flash('An error occurred while loading device management.', 'error')
+        return redirect(url_for('dashboard'))
+
+@app.route('/api/cache/addresses/cleanup', methods=['POST'])
+@login_required
+def api_cleanup_address_cache():
+    """API endpoint to cleanup expired address cache entries"""
+    try:
+        deleted_count = db.cleanup_expired_addresses()
+        return jsonify({
+            'success': True,
+            'message': f'Cleaned up {deleted_count} expired address cache entries',
+            'deleted_count': deleted_count
+        })
+    except Exception as e:
+        logger.error(f"Error cleaning up address cache: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to cleanup address cache'
+        }), 500
+
+@app.route('/api/cache/addresses/stats')
+@login_required
+def api_address_cache_stats():
+    """API endpoint to get address cache statistics"""
+    try:
+        stats = db.get_address_cache_stats()
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+    except Exception as e:
+        logger.error(f"Error getting address cache stats: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to get cache statistics'
+        }), 500
+
+# Automatic cache cleanup - run at application startup and periodically
+def cleanup_caches_on_startup():
+    """Run cache cleanup on application startup"""
+    try:
+        deleted_count = db.cleanup_expired_addresses()
+        if deleted_count > 0:
+            logger.info(f"Startup: Cleaned up {deleted_count} expired address cache entries")
+    except Exception as e:
+        logger.error(f"Error during startup cache cleanup: {e}")
+
+# Run cleanup on startup
+cleanup_caches_on_startup()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)

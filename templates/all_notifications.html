@@ -289,6 +289,9 @@
                     <i class="fas fa-users me-1"></i>Users
                 </a>
                 {% endif %}
+                <a class="nav-link" href="{{ url_for('settings') }}">
+                    <i class="fas fa-cog me-1"></i>Settings
+                </a>
                 <!-- Notification Bell -->
                 <div class="nav-item dropdown me-3">
                     <a class="nav-link notification-bell" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -396,8 +399,8 @@
                     <select class="form-select" id="device" name="device">
                         <option value="">All Devices</option>
                         {% for device in available_devices %}
-                            <option value="{{ device }}" {{ 'selected' if device_filter == device else '' }}>
-                                {{ device }}
+                            <option value="{{ device.device_name }}" {{ 'selected' if device_filter == device.device_name else '' }}>
+                                {{ device.display_name }}
                             </option>
                         {% endfor %}
                     </select>
@@ -460,7 +463,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-grow-1">
                             <div class="d-flex align-items-center mb-2">
-                                <strong class="me-2">{{ notification.device_name }}</strong>
+                                <strong class="me-2">{{ notification.device_name | device_display_name }}</strong>
                                 <span class="badge priority-{{ notification.priority }} text-white me-2">
                                     {{ notification.priority.upper() }}
                                 </span>

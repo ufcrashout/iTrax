@@ -452,9 +452,9 @@
                             <select class="form-select" id="device" name="device">
                                 <option value="">All Devices</option>
                                 {% for device in available_devices %}
-                                    <option value="{{ device }}" 
-                                            {{ 'selected' if selected_device == device else '' }}>
-                                        {{ device }}
+                                    <option value="{{ device.device_name }}" 
+                                            {{ 'selected' if selected_device == device.device_name else '' }}>
+                                        {{ device.display_name }}
                                     </option>
                                 {% endfor %}
                             </select>
@@ -532,7 +532,7 @@
                                         <div>
                                             <span class="status-indicator status-active"></span>
                                             <i class="fas fa-mobile-alt me-2 text-primary"></i>
-                                            <strong>{{ device }}</strong>
+                                            <strong>{{ device | device_display_name }}</strong>
                                         </div>
                                         <span class="badge bg-success">Active</span>
                                     </div>

@@ -105,7 +105,7 @@ class NotificationSystem {
                         <div class="flex-grow-1">
                             <div class="d-flex align-items-center mb-1">
                                 <i class="fas fa-${this.getNotificationIcon(notification.notification_type, notification.event_type)} me-2"></i>
-                                <strong>${notification.device_name}</strong>
+                                <strong>${notification.display_name || notification.device_name}</strong>
                                 ${isUnread ? '<span class="badge bg-primary ms-2">New</span>' : ''}
                             </div>
                             <p class="mb-1">${notification.message}</p>

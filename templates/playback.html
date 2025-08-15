@@ -395,9 +395,9 @@
                                         <select class="form-select me-md-2 mb-2 mb-md-0" name="device" onchange="updateFilters()">
                                             <option value="">All Devices</option>
                                             {% for device in available_devices %}
-                                                <option value="{{ device }}" 
-                                                        {{ 'selected' if selected_device == device else '' }}>
-                                                    {{ device }}
+                                                <option value="{{ device.device_name }}" 
+                                                        {{ 'selected' if selected_device == device.device_name else '' }}>
+                                                    {{ device.display_name }}
                                                 </option>
                                             {% endfor %}
                                         </select>

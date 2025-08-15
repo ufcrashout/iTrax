@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Management - iTrax</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .navbar { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
+        }
+        .navbar-brand, .nav-link { color: white !important; }
+        .nav-link:hover { color: #e3f2fd !important; }
+        .main-content { padding: 2rem 0; }
+        .card { 
+            border: none; border-radius: 15px; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08); 
+            margin-bottom: 1.5rem;
+        }
+        .card-header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; border-radius: 15px 15px 0 0 !important; border: none; 
+        }
+        .device-card {
+            padding: 1.5rem; margin-bottom: 1rem; border-radius: 12px;
+            background: white; border-left: 4px solid #667eea;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .device-card:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .device-has-nickname { border-left-color: #28a745; }
+        .device-name { 
+            font-size: 1.1rem; font-weight: 600; 
+            color: #333; margin-bottom: 0.5rem;
+        }
+        .device-nickname { 
+            font-size: 1.3rem; font-weight: 700; 
+            color: #28a745; margin-bottom: 0.25rem;
+        }
+        .device-original-name { 
+            font-size: 0.9rem; color: #666; 
+            font-style: italic;
+        }
+        .device-stats {
+            font-size: 0.875rem; color: #666;
+            margin-top: 0.75rem;
+        }
+        .btn-edit { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none; border-radius: 8px; color: white;
+            padding: 0.5rem 1rem; font-size: 0.875rem;
+        }
+        .btn-edit:hover { 
+            background: linear-gradient(135deg, #5a67d8 0%, #6b5b95 100%);
+            transform: translateY(-1px); color: white;
+        }
+        .btn-remove { 
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+            border: none; border-radius: 8px; color: white;
+            padding: 0.5rem 1rem; font-size: 0.875rem;
+        }
+        .btn-remove:hover { 
+            background: linear-gradient(135deg, #c82333 0%, #a71e2a 100%);
+            transform: translateY(-1px); color: white;
+        }
+        .nickname-form {
+            background: #f8f9fa; padding: 1rem; border-radius: 8px;
+            margin-top: 0.75rem; display: none;
+        }
+        .form-control:focus { 
+            border-color: #667eea; 
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25); 
+        }
+        
+        /* Notification Styles */
+        .notification-bell {
+            position: relative;
+            cursor: pointer;
+        }
+        .notification-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 10px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            animation: none;
+        }
+        .notification-badge-animate {
+            animation: pulse 0.5s ease-in-out;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        .notification-dropdown {
+            min-width: 350px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .notification-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .notification-item:last-child {
+            border-bottom: none;
+        }
+        .notification-item:hover {
+            background-color: #f8f9fa;
+        }
+        .notification-item.unread {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196f3;
+        }
+        .notification-item.read {
+            opacity: 0.8;
+        }
+        .notification-item.priority-urgent {
+            border-left-color: #dc3545 !important;
+        }
+        .notification-item.priority-high {
+            border-left-color: #fd7e14 !important;
+        }
+        .notification-item.priority-normal {
+            border-left-color: #2196f3 !important;
+        }
+        .notification-item.priority-low {
+            border-left-color: #6c757d !important;
+        }
+        
+        /* Mobile Responsive Styles */
+        @media (max-width: 991.98px) {
+            .navbar-nav {
+                padding: 1rem 0;
+            }
+            .navbar-nav .nav-link {
+                padding: 0.75rem 1rem;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }
+            .navbar-nav .nav-link:last-child {
+                border-bottom: none;
+            }
+            .notification-dropdown {
+                min-width: 300px !important;
+                max-width: 320px !important;
+            }
+            .navbar-text {
+                padding: 0.75rem 1rem;
+                border-top: 1px solid rgba(255,255,255,0.1);
+                margin: 0 !important;
+            }
+        }
+
+        @media (max-width: 767.98px) {
+            .main-content {
+                padding: 1rem 0;
+            }
+            .device-card {
+                margin-bottom: 0.75rem;
+                padding: 1rem;
+            }
+            .card {
+                margin-bottom: 1rem;
+            }
+            .notification-dropdown {
+                min-width: 280px !important;
+                max-width: 300px !important;
+                margin-right: -1rem;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            .notification-dropdown {
+                min-width: 260px !important;
+                max-width: 280px !important;
+                margin-right: -1.5rem;
+            }
+            .btn {
+                padding: 0.625rem 1.25rem;
+                font-size: 0.875rem;
+            }
+            .card-header h5, .card-header h6 {
+                font-size: 1rem;
+            }
+            /* Touch-friendly form elements */
+            .form-control, .form-select, .btn {
+                min-height: 44px;
+            }
+        }
+
+        /* Improved notification dropdown for mobile */
+        @media (max-width: 991.98px) {
+            .notification-dropdown .dropdown-header button {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+                <i class="fas fa-map-marker-alt me-2"></i>iTrax
+            </a>
+            
+            <!-- Mobile Hamburger Button -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Collapsible Navigation -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="{{ url_for('dashboard') }}">
+                    <i class="fas fa-map me-1"></i>Dashboard
+                </a>
+                <a class="nav-link" href="{{ url_for('analytics_dashboard') }}">
+                    <i class="fas fa-chart-line me-1"></i>Analytics
+                </a>
+                <a class="nav-link" href="{{ url_for('heatmap_overview') }}">
+                    <i class="fas fa-fire me-1"></i>Heatmap
+                </a>
+                <a class="nav-link" href="{{ url_for('historical_playback') }}">
+                    <i class="fas fa-play me-1"></i>Playback
+                </a>
+                <a class="nav-link" href="{{ url_for('geofences_overview') }}">
+                    <i class="fas fa-shield-alt me-1"></i>Geofences
+                </a>
+                <a class="nav-link" href="{{ url_for('notifications_overview') }}">
+                    <i class="fas fa-bell me-1"></i>Notifications
+                </a>
+                <a class="nav-link" href="{{ url_for('search_overview') }}">
+                    <i class="fas fa-search me-1"></i>Search
+                </a>
+                <a class="nav-link" href="{{ url_for('travel_reports') }}">
+                    <i class="fas fa-file-alt me-1"></i>Reports
+                </a>
+                {% if route_exists('gps_logs') %}
+                <a class="nav-link" href="{{ url_for('gps_logs') }}">
+                    <i class="fas fa-list me-1"></i>GPS Logs
+                </a>
+                {% endif %}
+                {% if current_user.is_admin() %}
+                <a class="nav-link" href="{{ url_for('user_management') }}">
+                    <i class="fas fa-users me-1"></i>Users
+                </a>
+                {% endif %}
+                <a class="nav-link active" href="{{ url_for('device_management') }}">
+                    <i class="fas fa-mobile-alt me-1"></i>Devices
+                </a>
+                <a class="nav-link" href="{{ url_for('settings') }}">
+                    <i class="fas fa-cog me-1"></i>Settings
+                </a>
+                <!-- Notification Bell -->
+                <div class="nav-item dropdown me-3">
+                    <a class="nav-link notification-bell" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-bell"></i>
+                        <span class="notification-badge" id="notificationBadge">0</span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown">
+                        <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+                            <h6 class="mb-0">Notifications</h6>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary me-2" onclick="markAllNotificationsRead()">
+                                    <i class="fas fa-check-double"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-secondary" onclick="loadAllNotifications()">
+                                    <i class="fas fa-list"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="notificationList">
+                            <div class="dropdown-item-text text-center text-muted py-4">
+                                <i class="fas fa-spinner fa-spin fa-2x mb-2"></i><br>
+                                Loading notifications...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user me-1"></i>{{ current_user.id }}
+                </span>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>Logout
+                </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container main-content">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'info-circle' }} me-2"></i>
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Page Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h3 class="mb-1">
+                                    <i class="fas fa-mobile-alt me-2"></i>Device Management
+                                </h3>
+                                <p class="mb-0 opacity-75">Manage device nicknames for easier identification</p>
+                            </div>
+                            <div class="d-grid d-md-block">
+                                <button class="btn btn-edit" onclick="refreshDevices()">
+                                    <i class="fas fa-sync me-1"></i>Refresh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Devices List -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-list me-2"></i>All Devices
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="devices-container">
+                            {% for device in devices %}
+                            <div class="device-card {% if device.nickname %}device-has-nickname{% endif %}" 
+                                 data-device="{{ device.device_name }}">
+                                <div class="row align-items-center">
+                                    <div class="col-md-8">
+                                        {% if device.nickname %}
+                                        <div class="device-nickname">
+                                            <i class="fas fa-tag me-1"></i>{{ device.nickname }}
+                                        </div>
+                                        <div class="device-original-name">
+                                            Device ID: {{ device.device_name }}
+                                        </div>
+                                        {% else %}
+                                        <div class="device-name">
+                                            <i class="fas fa-mobile-alt me-1"></i>{{ device.device_name }}
+                                        </div>
+                                        <div class="text-muted">
+                                            <small>No nickname set</small>
+                                        </div>
+                                        {% endif %}
+                                        <div class="device-stats">
+                                            <i class="fas fa-map-marker-alt me-1"></i>{{ device.location_count or 0 }} locations
+                                            {% if device.last_location %}
+                                            • <i class="fas fa-clock me-1"></i>Last seen: {{ device.last_location | user_timezone }}
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <div class="btn-group" role="group">
+                                            <button class="btn btn-edit btn-sm" onclick="editNickname('{{ device.device_name }}', '{{ device.nickname or '' }}')">
+                                                <i class="fas fa-edit"></i> {% if device.nickname %}Edit{% else %}Add{% endif %} Nickname
+                                            </button>
+                                            {% if device.nickname %}
+                                            <button class="btn btn-remove btn-sm" onclick="removeNickname('{{ device.device_name }}')">
+                                                <i class="fas fa-times"></i> Remove
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Nickname Edit Form -->
+                                <div class="nickname-form" id="nickname-form-{{ device.device_name | replace('.', '-') | replace(' ', '-') }}">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <input type="text" class="form-control" 
+                                                   placeholder="Enter nickname (e.g., 'Mom's iPhone', 'John's Device')"
+                                                   value="{{ device.nickname or '' }}"
+                                                   id="nickname-input-{{ device.device_name | replace('.', '-') | replace(' ', '-') }}">
+                                        </div>
+                                        <div class="col-md-4">
+                                            <div class="btn-group w-100" role="group">
+                                                <button class="btn btn-success btn-sm" onclick="saveNickname('{{ device.device_name }}')">
+                                                    <i class="fas fa-save"></i> Save
+                                                </button>
+                                                <button class="btn btn-secondary btn-sm" onclick="cancelEdit('{{ device.device_name }}')">
+                                                    <i class="fas fa-times"></i> Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% else %}
+                            <div class="text-center py-5">
+                                <i class="fas fa-mobile-alt fa-5x text-muted mb-3"></i>
+                                <h5 class="text-muted">No Devices Found</h5>
+                                <p class="text-muted">Devices will appear here once location data is received.</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="bg-dark text-light py-4 mt-5">
+        <div class="container text-center">
+            <p class="mb-2">&copy; 2025 <strong>iTrax by UF Cra⚡︎hOut</strong>. All rights reserved.</p>
+            <p class="mb-0 text-muted">Location tracking and analytics platform</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+    <script>
+        // CSRF token from Flask
+        const csrf_token = "{{ csrf_token() }}";
+
+        // Convert device name to safe ID
+        function deviceToId(deviceName) {
+            return deviceName.replace(/\./g, '-').replace(/\s/g, '-');
+        }
+
+        // Edit nickname
+        function editNickname(deviceName, currentNickname) {
+            const formId = `nickname-form-${deviceToId(deviceName)}`;
+            const inputId = `nickname-input-${deviceToId(deviceName)}`;
+            
+            const form = document.getElementById(formId);
+            const input = document.getElementById(inputId);
+            
+            if (form && input) {
+                form.style.display = 'block';
+                input.value = currentNickname;
+                input.focus();
+            }
+        }
+
+        // Cancel edit
+        function cancelEdit(deviceName) {
+            const formId = `nickname-form-${deviceToId(deviceName)}`;
+            const form = document.getElementById(formId);
+            
+            if (form) {
+                form.style.display = 'none';
+            }
+        }
+
+        // Save nickname
+        async function saveNickname(deviceName) {
+            const inputId = `nickname-input-${deviceToId(deviceName)}`;
+            const input = document.getElementById(inputId);
+            
+            if (!input) return;
+            
+            const nickname = input.value.trim();
+            
+            if (!nickname) {
+                showAlert('Nickname cannot be empty', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/devices/${encodeURIComponent(deviceName)}/nickname`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf_token
+                    },
+                    body: JSON.stringify({ nickname: nickname })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert(result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving nickname:', error);
+                showAlert('Failed to save nickname', 'error');
+            }
+        }
+
+        // Remove nickname
+        async function removeNickname(deviceName) {
+            if (!confirm(`Are you sure you want to remove the nickname for "${deviceName}"?`)) return;
+
+            try {
+                const response = await fetch(`/api/devices/${encodeURIComponent(deviceName)}/nickname`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRFToken': csrf_token
+                    }
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert(result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error removing nickname:', error);
+                showAlert('Failed to remove nickname', 'error');
+            }
+        }
+
+        // Refresh devices
+        function refreshDevices() {
+            location.reload();
+        }
+
+        // Show alert messages
+        function showAlert(message, type) {
+            const alertClass = type === 'error' ? 'danger' : type;
+            const icon = type === 'error' ? 'exclamation-triangle' : 'check-circle';
+            
+            const alertHtml = `
+                <div class="alert alert-${alertClass} alert-dismissible fade show" role="alert">
+                    <i class="fas fa-${icon} me-2"></i>
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            
+            const container = document.querySelector('.main-content .container');
+            container.insertAdjacentHTML('afterbegin', alertHtml);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                const alert = container.querySelector('.alert');
+                if (alert) {
+                    const bsAlert = new bootstrap.Alert(alert);
+                    bsAlert.close();
+                }
+            }, 5000);
+        }
+
+        // Handle Enter key in nickname inputs
+        document.addEventListener('DOMContentLoaded', function() {
+            document.addEventListener('keypress', function(e) {
+                if (e.target.classList.contains('form-control') && e.key === 'Enter') {
+                    const deviceName = e.target.id.replace('nickname-input-', '').replace(/-/g, '.');
+                    saveNickname(deviceName);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

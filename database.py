@@ -124,6 +124,7 @@ class Database:
                     device_name VARCHAR(255) NOT NULL,
                     device_id VARCHAR(255) UNIQUE,
                     device_type VARCHAR(100),
+                    nickname VARCHAR(255),
                     is_active BOOLEAN DEFAULT TRUE,
                     first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -297,6 +298,29 @@ class Database:
                     INDEX idx_category (category),
                     INDEX idx_location (latitude, longitude)
                 ) ENGINE=InnoDB""")
+                
+                # Address cache table for geocoding results
+                cursor.execute("""CREATE TABLE IF NOT EXISTS address_cache (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    latitude DECIMAL(10, 8) NOT NULL,
+                    longitude DECIMAL(11, 8) NOT NULL,
+                    address TEXT NOT NULL,
+                    geocoded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP NOT NULL,
+                    UNIQUE KEY unique_coordinates (latitude, longitude),
+                    INDEX idx_coordinates (latitude, longitude),
+                    INDEX idx_expires (expires_at)
+                ) ENGINE=InnoDB""")
+                
+                # Add nickname column to devices table if it doesn't exist
+                try:
+                    cursor.execute("""
+                        ALTER TABLE devices 
+                        ADD COLUMN IF NOT EXISTS nickname VARCHAR(255)
+                    """)
+                except Exception as e:
+                    # Column may already exist, that's okay
+                    logger.debug(f"Nickname column may already exist: {e}")
                     
                 # Basic table optimization (removed problematic buffer pool setting)
                 try:
@@ -1295,6 +1319,197 @@ class Database:
         }
         
         return timezone_groups
+    
+    def get_device_nickname(self, device_name: str) -> str:
+        """Get device nickname or return device_name if no nickname set"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT nickname FROM devices 
+                    WHERE device_name = %s AND nickname IS NOT NULL AND nickname != ''
+                """, (device_name,))
+                result = cursor.fetchone()
+                return result['nickname'] if result else device_name
+        except Exception as e:
+            logger.error(f"Failed to get device nickname for {device_name}: {e}")
+            return device_name
+    
+    def set_device_nickname(self, device_name: str, nickname: str) -> bool:
+        """Set or update a device nickname"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # First, ensure the device exists in the devices table
+                cursor.execute("""
+                    INSERT INTO devices (device_name, nickname, first_seen, last_seen) 
+                    VALUES (%s, %s, NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE 
+                    nickname = VALUES(nickname), last_seen = NOW()
+                """, (device_name, nickname))
+                
+                return True
+        except Exception as e:
+            logger.error(f"Failed to set nickname for device {device_name}: {e}")
+            return False
+    
+    def remove_device_nickname(self, device_name: str) -> bool:
+        """Remove a device nickname"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE devices 
+                    SET nickname = NULL 
+                    WHERE device_name = %s
+                """, (device_name,))
+                return True
+        except Exception as e:
+            logger.error(f"Failed to remove nickname for device {device_name}: {e}")
+            return False
+    
+    def get_all_devices_with_nicknames(self) -> List[Dict]:
+        """Get all devices with their nicknames"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT DISTINCT l.device_name,
+                           d.nickname,
+                           COALESCE(d.nickname, l.device_name) as display_name,
+                           COUNT(l.id) as location_count,
+                           MAX(l.timestamp) as last_location
+                    FROM locations l
+                    LEFT JOIN devices d ON l.device_name = d.device_name
+                    GROUP BY l.device_name, d.nickname
+                    ORDER BY display_name
+                """)
+                return cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to get devices with nicknames: {e}")
+            return []
+    
+    def get_device_display_name(self, device_name: str) -> str:
+        """Get the display name for a device (nickname if available, otherwise device name)"""
+        nickname = self.get_device_nickname(device_name)
+        return nickname if nickname != device_name else device_name
+    
+    def get_cached_address(self, latitude: float, longitude: float, tolerance: float = 0.0005) -> Optional[str]:
+        """Get cached address from database if not expired, with smart coordinate grouping
+        
+        Args:
+            latitude: Target latitude
+            longitude: Target longitude  
+            tolerance: Coordinate tolerance for grouping (default ~55 meters at equator)
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # First try exact match
+                cursor.execute("""
+                    SELECT address FROM address_cache 
+                    WHERE latitude = %s AND longitude = %s 
+                    AND expires_at > NOW()
+                """, (latitude, longitude))
+                result = cursor.fetchone()
+                if result:
+                    return result['address']
+                
+                # If no exact match, try nearby coordinates within tolerance
+                cursor.execute("""
+                    SELECT address, latitude, longitude,
+                           ABS(latitude - %s) + ABS(longitude - %s) as distance
+                    FROM address_cache 
+                    WHERE ABS(latitude - %s) <= %s 
+                    AND ABS(longitude - %s) <= %s
+                    AND expires_at > NOW()
+                    ORDER BY distance
+                    LIMIT 1
+                """, (latitude, longitude, latitude, tolerance, longitude, tolerance))
+                
+                nearby_result = cursor.fetchone()
+                if nearby_result:
+                    logger.debug(f"Using nearby cached address for {latitude},{longitude} from {nearby_result['latitude']},{nearby_result['longitude']}")
+                    return nearby_result['address']
+                
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get cached address for {latitude}, {longitude}: {e}")
+            return None
+    
+    def cache_address(self, latitude: float, longitude: float, address: str, cache_days: int = 30) -> bool:
+        """Cache address in database with expiration"""
+        try:
+            from datetime import datetime, timedelta
+            expires_at = datetime.now() + timedelta(days=cache_days)
+            
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO address_cache (latitude, longitude, address, expires_at) 
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE 
+                    address = VALUES(address), 
+                    geocoded_at = CURRENT_TIMESTAMP,
+                    expires_at = VALUES(expires_at)
+                """, (latitude, longitude, address, expires_at))
+                return True
+        except Exception as e:
+            logger.error(f"Failed to cache address for {latitude}, {longitude}: {e}")
+            return False
+    
+    def cleanup_expired_addresses(self) -> int:
+        """Remove expired address cache entries and return count of deleted entries"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM address_cache WHERE expires_at <= NOW()")
+                deleted_count = cursor.rowcount
+                if deleted_count > 0:
+                    logger.info(f"Cleaned up {deleted_count} expired address cache entries")
+                return deleted_count
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired address cache: {e}")
+            return 0
+    
+    def get_address_cache_stats(self) -> Dict:
+        """Get statistics about the address cache"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get total cache entries
+                cursor.execute("SELECT COUNT(*) as total FROM address_cache")
+                total = cursor.fetchone()['total']
+                
+                # Get expired entries
+                cursor.execute("SELECT COUNT(*) as expired FROM address_cache WHERE expires_at <= NOW()")
+                expired = cursor.fetchone()['expired']
+                
+                # Get cache size
+                cursor.execute("""
+                    SELECT ROUND(SUM(LENGTH(address)) / 1024, 2) as size_kb 
+                    FROM address_cache
+                """)
+                size_result = cursor.fetchone()
+                size_kb = size_result['size_kb'] if size_result['size_kb'] else 0
+                
+                return {
+                    'total_entries': total,
+                    'active_entries': total - expired,
+                    'expired_entries': expired,
+                    'cache_size_kb': float(size_kb)
+                }
+        except Exception as e:
+            logger.error(f"Failed to get address cache stats: {e}")
+            return {
+                'total_entries': 0,
+                'active_entries': 0,
+                'expired_entries': 0,
+                'cache_size_kb': 0
+            }
 
 # Global database instance
 db = Database()

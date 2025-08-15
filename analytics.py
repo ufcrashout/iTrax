@@ -30,15 +30,28 @@ class LocationAnalytics:
     def __init__(self):
         self.geocoder = Nominatim(user_agent="icloud-tracker-analytics")
         self.timezone = Config.get_timezone()
-        self.address_cache = {}  # Cache for geocoded addresses
+        self.geocoding_enabled = True  # Flag to disable geocoding on persistent failures
+        self.failure_count = 0  # Track consecutive failures
+        self.last_failure_time = None
         
     def get_address_from_coordinates(self, latitude: float, longitude: float, use_cache: bool = True) -> Optional[str]:
-        """Get address from coordinates using reverse geocoding with caching"""
-        cache_key = f"{latitude:.4f},{longitude:.4f}"
+        """Get address from coordinates using reverse geocoding with SQL caching and failure handling"""
         
-        # Check cache first
-        if use_cache and cache_key in self.address_cache:
-            return self.address_cache[cache_key]
+        # Check SQL cache first
+        if use_cache:
+            cached_address = db.get_cached_address(latitude, longitude)
+            if cached_address:
+                return cached_address
+        
+        # Check if geocoding is temporarily disabled due to persistent failures
+        if not self.geocoding_enabled:
+            # Re-enable geocoding after 10 minutes
+            if self.last_failure_time and datetime.now() - self.last_failure_time > timedelta(minutes=10):
+                self.geocoding_enabled = True
+                self.failure_count = 0
+                logger.info("Re-enabling geocoding after cooldown period")
+            else:
+                return f"Location ({latitude:.4f}, {longitude:.4f})"
         
         try:
             # Rate limiting - be nice to the geocoding service
@@ -47,17 +60,41 @@ class LocationAnalytics:
             location = self.geocoder.reverse(f"{latitude}, {longitude}", timeout=5)
             if location and location.address:
                 address = self._format_address(location.address)
-                self.address_cache[cache_key] = address
+                # Cache successful geocoding result for 30 days
+                db.cache_address(latitude, longitude, address, cache_days=30)
+                # Reset failure count on success
+                self.failure_count = 0
                 return address
             else:
-                return f"Unknown Location ({latitude:.4f}, {longitude:.4f})"
+                fallback_address = f"Unknown Location ({latitude:.4f}, {longitude:.4f})"
+                # Cache fallback address for shorter period (7 days)
+                db.cache_address(latitude, longitude, fallback_address, cache_days=7)
+                return fallback_address
                 
         except (GeocoderTimedOut, GeocoderServiceError) as e:
+            self._handle_geocoding_failure()
             logger.warning(f"Geocoding failed for {latitude}, {longitude}: {e}")
-            return f"Location ({latitude:.4f}, {longitude:.4f})"
+            fallback_address = f"Location ({latitude:.4f}, {longitude:.4f})"
+            # Cache failure result for shorter period (1 day) to retry sooner
+            db.cache_address(latitude, longitude, fallback_address, cache_days=1)
+            return fallback_address
         except Exception as e:
+            self._handle_geocoding_failure()
             logger.error(f"Unexpected geocoding error: {e}")
-            return f"Error ({latitude:.4f}, {longitude:.4f})"
+            fallback_address = f"Error ({latitude:.4f}, {longitude:.4f})"
+            # Cache error result for very short period (6 hours) 
+            db.cache_address(latitude, longitude, fallback_address, cache_days=0.25)
+            return fallback_address
+    
+    def _handle_geocoding_failure(self):
+        """Handle geocoding failures and temporarily disable if too many consecutive failures"""
+        self.failure_count += 1
+        self.last_failure_time = datetime.now()
+        
+        # Disable geocoding after 10 consecutive failures
+        if self.failure_count >= 10:
+            self.geocoding_enabled = False
+            logger.warning(f"Disabling geocoding temporarily due to {self.failure_count} consecutive failures. Will retry in 10 minutes.")
     
     def _format_address(self, raw_address: str) -> str:
         """Format and clean up address string"""
