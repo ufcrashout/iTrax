@@ -236,8 +236,9 @@ def user_timezone_filter(dt):
         if hasattr(dt, 'strftime'):
             try:
                 return dt.strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to format datetime {dt}: {e}")
+                # Continue to fallback string representation
         return str(dt) if dt else ''
 
 @app.template_filter('device_display_name')
@@ -1547,8 +1548,9 @@ def gps_logs():
                                             log['address'] = full_address
                                             # Cache the result for future use
                                             db.cache_address(log['latitude'], log['longitude'], full_address)
-                                    except:
-                                        pass  # Keep coordinate format on API failure
+                                    except Exception as e:
+                                        logger.debug(f"Failed to get address from coordinates {log['latitude']}, {log['longitude']}: {e}")
+                                        # Keep coordinate format on API failure
                         except Exception as e:
                             logger.debug(f"Could not process address for {log['latitude']}, {log['longitude']}: {e}")
                             log['address'] = f"({log['latitude']:.4f}, {log['longitude']:.4f})"
@@ -1584,8 +1586,9 @@ def gps_logs():
                             enhanced_log['address'] = full_address
                             # Cache for future use
                             db.cache_address(enhanced_log['latitude'], enhanced_log['longitude'], full_address)
-                    except:
-                        pass  # Keep existing format if geocoding fails
+                    except Exception as e:
+                        logger.debug(f"Failed to get address from coordinates {enhanced_log['latitude']}, {enhanced_log['longitude']}: {e}")
+                        # Keep existing format if geocoding fails
                 
                 enhanced_logs.append(enhanced_log)
             
