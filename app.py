@@ -527,7 +527,8 @@ def api_locations():
             start_time=start_time,
             end_time=end_time,
             device_name=device_name,
-            limit=limit
+            limit=limit,
+            cluster_locations=True
         )
         
         safe_locations = [serialize_location_row(row) for row in (location_history or [])]
@@ -638,6 +639,27 @@ def internal_error(error):
 @app.errorhandler(429)
 def ratelimit_handler(e):
     return jsonify({'error': 'Rate limit exceeded'}), 429
+
+@app.route('/api/address')
+@login_required
+@limiter.limit("60 per minute")
+def api_address():
+    """API endpoint for getting address from coordinates"""
+    try:
+        lat = request.args.get('lat', type=float)
+        lng = request.args.get('lng', type=float)
+        
+        if lat is None or lng is None:
+            return jsonify({'error': 'Missing lat or lng parameters'}), 400
+        
+        # Use analytics module to get address with caching
+        from analytics import analytics
+        address = analytics.get_address_from_coordinates(lat, lng, use_cache=True)
+        
+        return jsonify({'address': address})
+    except Exception as e:
+        logger.error(f"Error in address API endpoint: {e}")
+        return jsonify({'error': 'Failed to get address'}), 500
 
 @app.route('/analytics')
 @login_required

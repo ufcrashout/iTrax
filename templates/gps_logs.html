@@ -1,30 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Logs - iTrax</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}GPS Logs - iTrax{% endblock %}
+
+{% block extra_css %}
     <style>
         body { background-color: #f8f9fa; }
-        .navbar { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1); 
-        }
-        .navbar-brand, .nav-link { color: white !important; }
-        .nav-link:hover { color: #e3f2fd !important; }
-        .main-content { padding: 2rem 0; }
         .card { 
             border: none; border-radius: 15px; 
             box-shadow: 0 5px 15px rgba(0,0,0,0.08); 
             margin-bottom: 1.5rem;
         }
-        .card-header { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; border-radius: 15px 15px 0 0 !important; border: none; 
-        }
+        .card-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px 15px 0 0 !important; border: none; }
         .logs-table { 
             font-size: 0.9rem; 
         }
@@ -296,100 +282,9 @@
             }
         }
     </style>
-</head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                <i class="fas fa-map-marker-alt me-2"></i>iTrax
-            </a>
-            
-            <!-- Mobile Hamburger Button -->
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
-                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <!-- Collapsible Navigation -->
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('dashboard') }}">
-                    <i class="fas fa-map me-1"></i>Dashboard
-                </a>
-                <a class="nav-link" href="{{ url_for('analytics_dashboard') }}">
-                    <i class="fas fa-chart-line me-1"></i>Analytics
-                </a>
-                <a class="nav-link" href="{{ url_for('heatmap_overview') }}">
-                    <i class="fas fa-fire me-1"></i>Heatmap
-                </a>
-                <a class="nav-link" href="{{ url_for('historical_playback') }}">
-                    <i class="fas fa-play me-1"></i>Playback
-                </a>
-                <a class="nav-link" href="{{ url_for('geofences_overview') }}">
-                    <i class="fas fa-shield-alt me-1"></i>Geofences
-                </a>
-                <a class="nav-link" href="{{ url_for('notifications_overview') }}">
-                    <i class="fas fa-bell me-1"></i>Notifications
-                </a>
-                <a class="nav-link" href="{{ url_for('search_overview') }}">
-                    <i class="fas fa-search me-1"></i>Search
-                </a>
-                <a class="nav-link" href="{{ url_for('travel_reports') }}">
-                    <i class="fas fa-file-alt me-1"></i>Reports
-                </a>
-                <a class="nav-link active" href="{{ url_for('gps_logs') }}">
-                    <i class="fas fa-list me-1"></i>GPS Logs
-                </a>
-                {% if current_user.is_admin() %}
-                <a class="nav-link" href="{{ url_for('user_management') }}">
-                    <i class="fas fa-users me-1"></i>Users
-                </a>
-                {% endif %}
-                <a class="nav-link" href="{{ url_for('device_management') }}">
-                    <i class="fas fa-mobile-alt me-1"></i>Devices
-                </a>
-                <a class="nav-link" href="{{ url_for('settings') }}">
-                    <i class="fas fa-cog me-1"></i>Settings
-                </a>
-                <!-- Notification Bell -->
-                <div class="nav-item dropdown me-3">
-                    <a class="nav-link notification-bell" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-bell"></i>
-                        <span class="notification-badge" id="notificationBadge">0</span>
-                    </a>
-                    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown">
-                        <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
-                            <h6 class="mb-0">Notifications</h6>
-                            <div>
-                                <button class="btn btn-sm btn-outline-primary me-2" onclick="markAllNotificationsRead()">
-                                    <i class="fas fa-check-double"></i>
-                                </button>
-                                <button class="btn btn-sm btn-outline-secondary" onclick="loadAllNotifications()">
-                                    <i class="fas fa-list"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div id="notificationList">
-                            <div class="dropdown-item-text text-center text-muted py-4">
-                                <i class="fas fa-spinner fa-spin fa-2x mb-2"></i><br>
-                                Loading notifications...
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <span class="navbar-text me-3">
-                    <i class="fas fa-user me-1"></i>{{ current_user.id }}
-                </span>
-                <a class="nav-link" href="{{ url_for('logout') }}">
-                    <i class="fas fa-sign-out-alt me-1"></i>Logout
-                </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+{% endblock %}
 
-    <div class="container main-content">
+{% block content %}
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -726,18 +621,9 @@
             </div>
             <p class="mt-2">Loading GPS logs...</p>
         </div>
-    </div>
+{% endblock %}
 
-    <!-- Footer -->
-    <footer class="bg-dark text-light py-4 mt-5">
-        <div class="container text-center">
-            <p class="mb-2">&copy; 2025 <strong>iTrax by UF Cra⚡︎hOut</strong>. All rights reserved.</p>
-            <p class="mb-0 text-muted">Location tracking and analytics platform</p>
-        </div>
-    </footer>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+{% block extra_js %}
     <script>
         // Clear all filters
         function clearFilters() {
@@ -1039,5 +925,1046 @@
             });
         });
     </script>
+{% endblock %}
+
+                </div>
+
+                <div class="col-sm-6 col-md-3">
+
+                    <div class="btn-group">
+
+                        <button class="btn btn-export btn-sm" onclick="exportLogs('csv')">
+
+                            <i class="fas fa-file-csv me-1"></i>Export CSV
+
+                        </button>
+
+                        <button class="btn btn-export btn-sm" onclick="exportLogs('json')">
+
+                            <i class="fas fa-file-code me-1"></i>Export JSON
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        {% endif %}
+
+
+
+        <!-- GPS Logs Table -->
+
+        <div class="card">
+
+            <div class="card-header">
+
+                <div class="d-flex justify-content-between align-items-center">
+
+                    <h6 class="mb-0">
+
+                        <i class="fas fa-table me-2"></i>Location Data
+
+                        {% if device_filter %}for {{ device_filter }}{% endif %}
+
+                        {% if start_date or end_date %}
+
+                            ({{ start_date or 'All' }} to {{ end_date or 'All' }})
+
+                        {% endif %}
+
+                    </h6>
+
+                </div>
+
+            </div>
+
+            <div class="card-body p-0">
+
+                {% if logs_data %}
+
+                <div class="table-responsive">
+
+                    <table class="table table-hover logs-table mb-0">
+
+                        <thead class="table-light">
+
+                            <tr>
+
+                                <th width="12%">Device</th>
+
+                                <th width="25%">Address</th>
+
+                                <th width="18%">Coordinates</th>
+
+                                <th width="15%">Timestamp</th>
+
+                                <th width="8%">Accuracy</th>
+
+                                <th width="8%">Battery</th>
+
+                                <th width="6%">Charging</th>
+
+                                <th width="8%">Recorded</th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody>
+
+                            {% for log in logs_data %}
+
+                            <tr class="log-row">
+
+                                <td>
+
+                                    <span class="device-badge">{{ log.device_name }}</span>
+
+                                </td>
+
+                                <td>
+
+                                    <div class="address-text" id="address-{{ loop.index }}">
+
+                                        <i class="fas fa-map-marker-alt me-1 text-primary"></i>
+
+                                        <span class="address-content">
+
+                                            {{ log.address or 'Loading...' }}
+
+                                        </span>
+
+                                        {% if loop.index > 3 and log.address and ',' not in log.address %}
+
+                                        <button class="btn btn-sm btn-outline-info ms-1" 
+
+                                                onclick="loadSingleAddress({{ log.latitude }}, {{ log.longitude }}, {{ loop.index }})" 
+
+                                                title="Load full address">
+
+                                            <i class="fas fa-search"></i>
+
+                                        </button>
+
+                                        {% endif %}
+
+                                    </div>
+
+                                </td>
+
+                                <td>
+
+                                    <div class="coordinate-text">
+
+                                        <div>{{ "%.6f"|format(log.latitude) }}</div>
+
+                                        <div>{{ "%.6f"|format(log.longitude) }}</div>
+
+                                    </div>
+
+                                    <button class="btn btn-sm btn-outline-primary mt-1" 
+
+                                            onclick="viewOnMap({{ log.latitude }}, {{ log.longitude }})">
+
+                                        <i class="fas fa-external-link-alt"></i>
+
+                                    </button>
+
+                                </td>
+
+                                <td>
+
+                                    <div class="timestamp-text">
+
+                                        {{ log.timestamp | user_timezone }}
+
+                                    </div>
+
+                                </td>
+
+                                <td>
+
+                                    {% if log.accuracy %}
+
+                                        {% if log.accuracy < 10 %}
+
+                                            <span class="accuracy-good">
+
+                                                <i class="fas fa-circle"></i> {{ "%.1f"|format(log.accuracy) }}m
+
+                                            </span>
+
+                                        {% elif log.accuracy < 50 %}
+
+                                            <span class="accuracy-fair">
+
+                                                <i class="fas fa-circle"></i> {{ "%.1f"|format(log.accuracy) }}m
+
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="accuracy-poor">
+
+                                                <i class="fas fa-circle"></i> {{ "%.1f"|format(log.accuracy) }}m
+
+                                            </span>
+
+                                        {% endif %}
+
+                                    {% else %}
+
+                                        <span class="text-muted">N/A</span>
+
+                                    {% endif %}
+
+                                </td>
+
+                                <td>
+
+                                    {% if log.battery_level %}
+
+                                        {% set battery_pct = (log.battery_level * 100) | round %}
+
+                                        {% if battery_pct > 50 %}
+
+                                            <span class="battery-high">
+
+                                                <i class="fas fa-battery-full"></i> {{ battery_pct }}%
+
+                                            </span>
+
+                                        {% elif battery_pct > 20 %}
+
+                                            <span class="battery-medium">
+
+                                                <i class="fas fa-battery-half"></i> {{ battery_pct }}%
+
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="battery-low">
+
+                                                <i class="fas fa-battery-empty"></i> {{ battery_pct }}%
+
+                                            </span>
+
+                                        {% endif %}
+
+                                    {% else %}
+
+                                        <span class="text-muted">N/A</span>
+
+                                    {% endif %}
+
+                                </td>
+
+                                <td>
+
+                                    {% if log.is_charging == 1 %}
+
+                                        <span class="charging-icon">
+
+                                            <i class="fas fa-bolt"></i> Yes
+
+                                        </span>
+
+                                    {% elif log.is_charging == 0 %}
+
+                                        <span class="text-muted">No</span>
+
+                                    {% else %}
+
+                                        <span class="text-muted">N/A</span>
+
+                                    {% endif %}
+
+                                </td>
+
+                                <td>
+
+                                    <div class="timestamp-text">
+
+                                        {{ log.created_at | user_timezone }}
+
+                                    </div>
+
+                                </td>
+
+                            </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+
+
+                <!-- Pagination -->
+
+                {% if total_pages > 1 %}
+
+                <div class="d-flex justify-content-between align-items-center p-3 border-top">
+
+                    <div class="pagination-info">
+
+                        Showing {{ ((page-1) * limit + 1) }} to {{ ((page-1) * limit + logs_data|length) }} of {{ total_count }} records
+
+                    </div>
+
+                    <nav>
+
+                        <ul class="pagination mb-0">
+
+                            {% if has_prev %}
+
+                                <li class="page-item">
+
+                                    <a class="page-link" href="{{ url_for('gps_logs', device=device_filter, start_date=start_date, end_date=end_date, limit=limit, page=1) }}">
+
+                                        <i class="fas fa-angle-double-left"></i>
+
+                                    </a>
+
+                                </li>
+
+                                <li class="page-item">
+
+                                    <a class="page-link" href="{{ url_for('gps_logs', device=device_filter, start_date=start_date, end_date=end_date, limit=limit, page=page-1) }}">
+
+                                        <i class="fas fa-angle-left"></i>
+
+                                    </a>
+
+                                </li>
+
+                            {% endif %}
+
+                            
+
+                            {% for p in range([1, page-2]|max, [total_pages+1, page+3]|min) %}
+
+                                <li class="page-item {{ 'active' if p == page else '' }}">
+
+                                    <a class="page-link" href="{{ url_for('gps_logs', device=device_filter, start_date=start_date, end_date=end_date, limit=limit, page=p) }}">
+
+                                        {{ p }}
+
+                                    </a>
+
+                                </li>
+
+                            {% endfor %}
+
+                            
+
+                            {% if has_next %}
+
+                                <li class="page-item">
+
+                                    <a class="page-link" href="{{ url_for('gps_logs', device=device_filter, start_date=start_date, end_date=end_date, limit=limit, page=page+1) }}">
+
+                                        <i class="fas fa-angle-right"></i>
+
+                                    </a>
+
+                                </li>
+
+                                <li class="page-item">
+
+                                    <a class="page-link" href="{{ url_for('gps_logs', device=device_filter, start_date=start_date, end_date=end_date, limit=limit, page=total_pages) }}">
+
+                                        <i class="fas fa-angle-double-right"></i>
+
+                                    </a>
+
+                                </li>
+
+                            {% endif %}
+
+                        </ul>
+
+                    </nav>
+
+                </div>
+
+                {% endif %}
+
+                {% else %}
+
+                <div class="text-center py-5">
+
+                    <i class="fas fa-map-marker-alt fa-4x text-muted opacity-25 mb-3"></i>
+
+                    <h4 class="text-muted">No GPS Logs Found</h4>
+
+                    <p class="text-muted">No location records match your current filters. Try adjusting the date range or device selection.</p>
+
+                    <button class="btn btn-outline-secondary" onclick="clearFilters()">
+
+                        <i class="fas fa-filter me-1"></i>Clear All Filters
+
+                    </button>
+
+                </div>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+
+        <!-- Loading Indicator -->
+
+        <div class="loading-spinner" id="loading">
+
+            <div class="spinner-border text-primary" role="status">
+
+                <span class="visually-hidden">Loading...</span>
+
+            </div>
+
+            <p class="mt-2">Loading GPS logs...</p>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- Footer -->
+
+    <footer class="bg-dark text-light py-4 mt-5">
+
+        <div class="container text-center">
+
+            <p class="mb-2">&copy; 2025 <strong>iTrax by UF Cra⚡︎hOut</strong>. All rights reserved.</p>
+
+            <p class="mb-0 text-muted">Location tracking and analytics platform</p>
+
+        </div>
+
+    </footer>
+
+
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+
+    <script>
+
+        // Clear all filters
+
+        function clearFilters() {
+
+            document.getElementById('device').value = '';
+
+            document.getElementById('start_date').value = '';
+
+            document.getElementById('end_date').value = '';
+
+            document.getElementById('limit').value = '100'; // Default to smaller page size
+
+            document.getElementById('filterForm').submit();
+
+        }
+
+
+
+        // Export logs
+
+        function exportLogs(format) {
+
+            const params = new URLSearchParams({
+
+                device: document.getElementById('device').value,
+
+                start_date: document.getElementById('start_date').value,
+
+                end_date: document.getElementById('end_date').value,
+
+                format: format
+
+            });
+
+            
+
+            window.open(`/api/gps-logs/export?${params.toString()}`, '_blank');
+
+        }
+
+
+
+        // View location on map
+
+        function viewOnMap(lat, lng) {
+
+            const url = `https://www.google.com/maps?q=${lat},${lng}`;
+
+            window.open(url, '_blank');
+
+        }
+
+
+
+        // Show loading on form submit
+
+        document.getElementById('filterForm').addEventListener('submit', function() {
+
+            document.getElementById('loading').style.display = 'block';
+
+        });
+
+
+
+        // Set max dates to today
+
+        const today = new Date().toISOString().split('T')[0];
+
+        document.getElementById('start_date').max = today;
+
+        document.getElementById('end_date').max = today;
+
+
+
+        // Auto-submit on limit change
+
+        document.getElementById('limit').addEventListener('change', function() {
+
+            document.getElementById('filterForm').submit();
+
+        });
+
+        
+
+        // 3-Page Address Prefetching System
+
+        const addressCache = new Map(); // Cache for loaded addresses
+
+        const currentPage = {{ page }};
+
+        const totalPages = {{ total_pages }};
+
+        const currentLimit = {{ limit }};
+
+        
+
+        // Get current filter parameters for page requests
+
+        function getCurrentFilters() {
+
+            return {
+
+                device: '{{ device_filter or "" }}',
+
+                start_date: '{{ start_date or "" }}',
+
+                end_date: '{{ end_date or "" }}',
+
+                limit: currentLimit
+
+            };
+
+        }
+
+        
+
+        // Load addresses for 3 pages (current + adjacent)
+
+        function initAddressPrefetching() {
+
+            const pagesToLoad = [];
+
+            
+
+            // Always load current page
+
+            pagesToLoad.push(currentPage);
+
+            
+
+            // Add previous page if exists
+
+            if (currentPage > 1) {
+
+                pagesToLoad.push(currentPage - 1);
+
+            }
+
+            
+
+            // Add next page if exists
+
+            if (currentPage < totalPages) {
+
+                pagesToLoad.push(currentPage + 1);
+
+            }
+
+            
+
+            console.log(`Address prefetching: Loading pages ${pagesToLoad.join(', ')}`);
+
+            updatePrefetchStatus('active', `Loading ${pagesToLoad.length} pages...`);
+
+            
+
+            let completedPages = 0;
+
+            
+
+            // Load addresses for each page
+
+            pagesToLoad.forEach((page, index) => {
+
+                setTimeout(() => {
+
+                    loadPageAddresses(page).then(() => {
+
+                        completedPages++;
+
+                        if (completedPages === pagesToLoad.length) {
+
+                            updatePrefetchStatus('complete', 'Address prefetching complete');
+
+                        } else {
+
+                            updatePrefetchStatus('active', `Loaded ${completedPages}/${pagesToLoad.length} pages`);
+
+                        }
+
+                    }).catch(() => {
+
+                        completedPages++;
+
+                        if (completedPages === pagesToLoad.length) {
+
+                            updatePrefetchStatus('complete', 'Address prefetching complete');
+
+                        }
+
+                    });
+
+                }, index * 500); // Stagger page requests
+
+            });
+
+        }
+
+        
+
+        // Update prefetch status indicator
+
+        function updatePrefetchStatus(status, message) {
+
+            const statusElement = document.getElementById('prefetchStatus');
+
+            const iconElement = document.getElementById('prefetchIcon');
+
+            const textElement = document.getElementById('prefetchText');
+
+            
+
+            if (!statusElement) return;
+
+            
+
+            if (status === 'active') {
+
+                iconElement.className = 'fas fa-sync fa-spin text-primary me-1';
+
+                textElement.textContent = message;
+
+                statusElement.style.display = 'block';
+
+            } else if (status === 'complete') {
+
+                iconElement.className = 'fas fa-check text-success me-1';
+
+                textElement.textContent = message;
+
+                setTimeout(() => {
+
+                    statusElement.style.display = 'none';
+
+                }, 3000); // Hide after 3 seconds
+
+            }
+
+        }
+
+        
+
+        // Load addresses for a specific page
+
+        async function loadPageAddresses(pageNum) {
+
+            return new Promise(async (resolve, reject) => {
+
+                try {
+
+                    const filters = getCurrentFilters();
+
+                    const params = new URLSearchParams({
+
+                        ...filters,
+
+                        page: pageNum,
+
+                        addresses_only: 'true' // Special flag for address-only requests
+
+                    });
+
+                    
+
+                    const response = await fetch(`/gps-logs?${params.toString()}`, {
+
+                        headers: {
+
+                            'Accept': 'application/json',
+
+                            'X-Requested-With': 'XMLHttpRequest'
+
+                        }
+
+                    });
+
+                    
+
+                    if (response.ok) {
+
+                        const data = await response.json();
+
+                        if (data.logs) {
+
+                            // Cache addresses for this page
+
+                            data.logs.forEach((log, index) => {
+
+                                const globalIndex = (pageNum - 1) * currentLimit + index + 1;
+
+                                if (log.address && log.address !== 'Loading...') {
+
+                                    addressCache.set(`${log.latitude},${log.longitude}`, log.address);
+
+                                }
+
+                            });
+
+                            
+
+                            // Update current page addresses if this is the current page
+
+                            if (pageNum === currentPage) {
+
+                                updateCurrentPageAddresses(data.logs);
+
+                            }
+
+                            
+
+                            console.log(`Loaded addresses for page ${pageNum} (${data.logs.length} records)`);
+
+                            resolve(data);
+
+                        } else {
+
+                            resolve(null);
+
+                        }
+
+                    } else {
+
+                        reject(new Error(`HTTP ${response.status}`));
+
+                    }
+
+                } catch (error) {
+
+                    console.warn(`Failed to load addresses for page ${pageNum}:`, error);
+
+                    reject(error);
+
+                }
+
+            });
+
+        }
+
+        
+
+        // Update addresses on current page
+
+        function updateCurrentPageAddresses(logs) {
+
+            logs.forEach((log, index) => {
+
+                const addressElement = document.getElementById(`address-${index + 1}`);
+
+                if (addressElement && log.address && log.address !== 'Loading...') {
+
+                    const addressContent = addressElement.querySelector('.address-content');
+
+                    if (addressContent && addressContent.textContent.trim() === 'Loading...') {
+
+                        addressContent.textContent = log.address;
+
+                        
+
+                        // Hide load button if it exists
+
+                        const loadBtn = addressElement.querySelector('button');
+
+                        if (loadBtn) loadBtn.style.display = 'none';
+
+                    }
+
+                }
+
+            });
+
+        }
+
+        
+
+        // Enhanced load all addresses function (now uses cache)
+
+        function loadAllAddresses() {
+
+            const btn = document.getElementById('loadAddressesBtn');
+
+            if (!btn) return;
+
+            
+
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Loading...';
+
+            btn.disabled = true;
+
+            
+
+            // Get coordinates for all records without full addresses
+
+            const addressElements = document.querySelectorAll('[id^="address-"]');
+
+            let loadCount = 0;
+
+            
+
+            addressElements.forEach((element, index) => {
+
+                const addressContent = element.querySelector('.address-content');
+
+                const text = addressContent.textContent.trim();
+
+                
+
+                // If it's still showing "Loading..." or coordinates
+
+                if (text === 'Loading...' || (text.includes('.') && text.includes(',') && !text.includes(' '))) {
+
+                    // Try to get from cache first
+
+                    const coords = text.includes(',') ? text : null;
+
+                    let foundInCache = false;
+
+                    
+
+                    if (coords) {
+
+                        const cachedAddress = addressCache.get(coords.trim());
+
+                        if (cachedAddress) {
+
+                            addressContent.textContent = cachedAddress;
+
+                            const loadBtn = element.querySelector('button');
+
+                            if (loadBtn) loadBtn.style.display = 'none';
+
+                            foundInCache = true;
+
+                        }
+
+                    }
+
+                    
+
+                    // If not in cache, load via API
+
+                    if (!foundInCache && coords) {
+
+                        const coordParts = coords.split(',');
+
+                        if (coordParts.length === 2) {
+
+                            const lat = parseFloat(coordParts[0].trim());
+
+                            const lng = parseFloat(coordParts[1].trim());
+
+                            
+
+                            setTimeout(() => {
+
+                                loadSingleAddress(lat, lng, index + 1);
+
+                            }, loadCount * 150); // Faster staggering
+
+                            
+
+                            loadCount++;
+
+                        }
+
+                    }
+
+                }
+
+            });
+
+            
+
+            // Re-enable button after loading
+
+            setTimeout(() => {
+
+                btn.innerHTML = '<i class="fas fa-check me-1"></i>Loaded';
+
+                setTimeout(() => {
+
+                    btn.style.display = 'none';
+
+                }, 2000);
+
+            }, loadCount * 150 + 1000);
+
+        }
+
+        
+
+        // Load single address function
+
+        function loadSingleAddress(lat, lng, index) {
+
+            const addressElement = document.getElementById(`address-${index}`);
+
+            if (!addressElement) return;
+
+            
+
+            const addressContent = addressElement.querySelector('.address-content');
+
+            const originalText = addressContent.textContent;
+
+            
+
+            // Show loading indicator
+
+            addressContent.innerHTML = '<span class="text-muted"><i class="fas fa-spinner fa-spin me-1"></i>Loading address...</span>';
+
+            
+
+            // Use a simple reverse geocoding service or your analytics API
+
+            // For now, we'll show a formatted coordinate display
+
+            setTimeout(() => {
+
+                // This would typically call your geocoding API
+
+                // For demo purposes, we'll just show formatted coordinates
+
+                const formattedAddress = `Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+                addressContent.textContent = formattedAddress;
+
+                
+
+                // Hide the load button for this address
+
+                const loadBtn = addressElement.querySelector('button');
+
+                if (loadBtn) loadBtn.style.display = 'none';
+
+            }, 500 + Math.random() * 1000); // Random delay to simulate API call
+
+        }
+
+        
+
+        // Initialize address prefetching when page loads
+
+        document.addEventListener('DOMContentLoaded', function() {
+
+            // Small delay to let the page fully render first
+
+            setTimeout(() => {
+
+                if ({{ total_pages }} > 1) {
+
+                    initAddressPrefetching();
+
+                }
+
+            }, 1000);
+
+        });
+
+        
+
+        // Prefetch addresses when pagination links are hovered (anticipatory loading)
+
+        document.addEventListener('DOMContentLoaded', function() {
+
+            const paginationLinks = document.querySelectorAll('.pagination .page-link');
+
+            paginationLinks.forEach(link => {
+
+                link.addEventListener('mouseenter', function() {
+
+                    const href = this.getAttribute('href');
+
+                    if (href && href.includes('page=')) {
+
+                        const pageMatch = href.match(/page=(\d+)/);
+
+                        if (pageMatch) {
+
+                            const hoverPage = parseInt(pageMatch[1]);
+
+                            // Prefetch this page if not already cached
+
+                            setTimeout(() => {
+
+                                loadPageAddresses(hoverPage);
+
+                            }, 200); // Small delay to avoid excessive requests
+
+                        }
+
+                    }
+
+                });
+
+            });
+
+        });
+
+    </script>
+
 </body>
+
 </html>

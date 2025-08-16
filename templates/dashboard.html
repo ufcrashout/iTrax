@@ -1,34 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - iTrax</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}Dashboard - iTrax{% endblock %}
+
+{% block extra_css %}
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .navbar-brand {
-            font-weight: 600;
-            color: white !important;
-        }
-        .nav-link {
-            color: rgba(255,255,255,0.9) !important;
-            transition: color 0.3s ease;
-        }
-        .nav-link:hover {
-            color: white !important;
-        }
-        .main-content {
-            padding: 2rem 0;
-        }
+        /* Dashboard specific styles */
         .card {
             border: none;
             border-radius: 15px;
@@ -267,6 +245,180 @@
             font-size: 14px;
         }
         
+        /* Visit Details Tabs Styles */
+        .nav-tabs {
+            border-bottom: 2px solid #e9ecef;
+        }
+        
+        .nav-tabs .nav-link {
+            color: #495057 !important;
+            background-color: #ffffff !important;
+            border: 2px solid #dee2e6 !important;
+            border-bottom: none !important;
+            border-radius: 10px 10px 0 0 !important;
+            transition: all 0.3s ease;
+            margin-right: 0.25rem;
+            font-weight: 600;
+            padding: 0.75rem 1.25rem;
+            text-decoration: none;
+        }
+        
+        .nav-tabs .nav-link:hover {
+            border-color: #667eea #667eea #e9ecef #667eea !important;
+            background-color: #f8f9ff !important;
+            color: #667eea !important;
+        }
+        
+        .nav-tabs .nav-link.active {
+            color: #ffffff !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            border-color: #667eea #667eea #e9ecef #667eea !important;
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .nav-tabs .nav-link .badge {
+            background-color: rgba(102, 126, 234, 0.2) !important;
+            color: #495057 !important;
+            font-size: 0.75rem;
+        }
+        
+        .nav-tabs .nav-link.active .badge {
+            background-color: rgba(255, 255, 255, 0.9) !important;
+            color: #667eea !important;
+        }
+        
+        .visit-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        
+        .visit-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+        
+        .visit-location {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 0.5rem;
+        }
+        
+        .visit-times {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .visit-time-item {
+            background: #f8f9fa;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .visit-time-item.arrival {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .visit-time-item.departure {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .visit-time-item.duration {
+            background: #cce5ff;
+            color: #004085;
+        }
+        
+        .visit-coordinates {
+            font-size: 0.75rem;
+            color: #6c757d;
+            font-family: monospace;
+        }
+        
+        .driving-segment {
+            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
+            border: 1px solid #e17055;
+            border-radius: 10px;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .driving-icon {
+            background: white;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e17055;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        
+        .driving-details {
+            flex-grow: 1;
+        }
+        
+        .driving-route {
+            font-weight: 600;
+            color: #2d3436;
+            margin-bottom: 0.25rem;
+        }
+        
+        .driving-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+            color: #636e72;
+        }
+        
+        .driving-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .tab-content {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        @media (max-width: 767.98px) {
+            .visit-times {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .nav-tabs {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .nav-tabs .nav-link {
+                white-space: nowrap;
+                min-width: 120px;
+            }
+        }
+        
         .leaflet-control-zoom a {
             width: 36px;
             height: 36px;
@@ -286,111 +438,8 @@
             }
         }
     </style>
-</head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                <i class="fas fa-map-marker-alt me-2"></i>iTrax
-            </a>
-            
-            <!-- Mobile Hamburger Button -->
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
-                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <!-- Collapsible Navigation -->
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('analytics_dashboard') }}">
-                    <i class="fas fa-chart-line me-1"></i>Analytics
-                </a>
-                <a class="nav-link" href="{{ url_for('heatmap_overview') }}">
-                    <i class="fas fa-fire me-1"></i>Heatmap
-                </a>
-                <a class="nav-link" href="{{ url_for('historical_playback') }}">
-                    <i class="fas fa-play me-1"></i>Playback
-                </a>
-                <a class="nav-link" href="{{ url_for('geofences_overview') }}">
-                    <i class="fas fa-shield-alt me-1"></i>Geofences
-                </a>
-                <a class="nav-link" href="{{ url_for('notifications_overview') }}">
-                    <i class="fas fa-bell me-1"></i>Notifications
-                </a>
-                <a class="nav-link" href="{{ url_for('search_overview') }}">
-                    <i class="fas fa-search me-1"></i>Search
-                </a>
-                <a class="nav-link" href="{{ url_for('travel_reports') }}">
-                    <i class="fas fa-file-alt me-1"></i>Reports
-                </a>
-                {% if route_exists('gps_logs') %}
-                <a class="nav-link" href="{{ url_for('gps_logs') }}">
-                    <i class="fas fa-list me-1"></i>GPS Logs
-                </a>
-                {% endif %}
-                {% if current_user.is_admin() %}
-                <a class="nav-link" href="{{ url_for('user_management') }}">
-                    <i class="fas fa-users me-1"></i>Users
-                </a>
-                {% endif %}
-                <!-- Notification Bell -->
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle position-relative" href="#" id="notificationDropdown" 
-                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-bell"></i>
-                        <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" 
-                              style="display: none; font-size: 0.6rem;">0</span>
-                    </a>
-                    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown" 
-                         style="min-width: 400px; max-width: 500px;">
-                        <div class="dropdown-header d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0">Notifications</h6>
-                            <button class="btn btn-sm btn-outline-primary" onclick="markAllNotificationsRead()">
-                                Mark All Read
-                            </button>
-                        </div>
-                        <div class="dropdown-divider"></div>
-                        <div id="notificationList" style="max-height: 400px; overflow-y: auto;">
-                            <div class="dropdown-item-text text-center text-muted py-4">
-                                <i class="fas fa-bell-slash fa-2x mb-2"></i><br>
-                                No notifications
-                            </div>
-                        </div>
-                        <div class="dropdown-divider"></div>
-                        <div class="dropdown-item-text text-center">
-                            <small><a href="#" onclick="loadAllNotifications()" class="text-decoration-none">View All Notifications</a></small>
-                        </div>
-                    </div>
-                </div>
-                <span class="navbar-text me-3">
-                    <i class="fas fa-user me-1"></i>{{ current_user.id }}
-                    {% if current_user.is_admin() %}
-                        <span class="badge bg-success ms-1">Admin</span>
-                    {% endif %}
-                </span>
-                <a class="nav-link" href="{{ url_for('logout') }}">
-                    <i class="fas fa-sign-out-alt me-1"></i>Logout
-                </a>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <div class="container main-content">
-        <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
-                        <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'info-circle' }} me-2"></i>
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+{% endblock %}
+{% block content %}
 
         <!-- Stats Cards -->
         <div class="row mb-4">
@@ -553,6 +602,35 @@
             </div>
         </div>
 
+        <!-- Device Visit Details Tabs -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="fas fa-map-marked-alt me-2"></i>Daily Visit Details</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Tab Navigation -->
+                        <ul class="nav nav-tabs" id="deviceTabs" role="tablist">
+                            <!-- Device tabs will be populated by JavaScript -->
+                        </ul>
+                        
+                        <!-- Tab Content -->
+                        <div class="tab-content mt-3" id="deviceTabContent">
+                            <!-- Visit details will be populated by JavaScript -->
+                        </div>
+                        
+                        <!-- No Data Message -->
+                        <div id="noVisitData" class="text-center text-muted py-4" style="display: none;">
+                            <i class="fas fa-info-circle fa-2x mb-2"></i>
+                            <p>No visit data available for the selected period.</p>
+                            <small>Select a date and device to view detailed visit information.</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Loading Indicator -->
         <div class="loading" id="loading">
             <div class="spinner-border" role="status">
@@ -560,17 +638,11 @@
             </div>
             <p class="mt-2">Loading location data...</p>
         </div>
-    </div>
+{% endblock %}
 
-    <!-- Footer -->
-    <footer class="bg-dark text-light py-4 mt-5">
-        <div class="container text-center">
-            <p class="mb-2">&copy; 2025 <strong>iTrax by UF Cra⚡︎hOut</strong>. All rights reserved.</p>
-            <p class="mb-0 text-muted">Location tracking and analytics platform</p>
-        </div>
-    </footer>
+    
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_js %}
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         // Performance optimized map initialization
@@ -610,6 +682,17 @@
                 console.error('Error formatting timestamp:', error);
                 return timestamp;
             }
+        }
+
+        // Ensure incoming timestamps are parsed as UTC (append 'Z' if missing)
+        function parseUtcTimestamp(ts) {
+            if (!ts) return new Date(NaN);
+            // If the string already contains timezone info (+/- or Z), use as is
+            if (/[zZ]|[\+\-]\d{2}:?\d{2}$/.test(ts)) {
+                return new Date(ts);
+            }
+            // Append Z to indicate UTC
+            return new Date(ts + 'Z');
         }
 
         // Performance optimization - use LayerGroup for better performance with many markers
@@ -789,7 +872,11 @@
         // Lazy loading initialization when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
             // Initialize map first
-            initializeMap();
+            try {
+                initializeMap();
+            } catch (e) {
+                console.error('Map initialization failed:', e);
+            }
             
             // Then render data with a slight delay for better UX
             setTimeout(function() {
@@ -799,6 +886,13 @@
                 if (markers.length > 0) {
                     var group = new L.featureGroup(markers);
                     map.fitBounds(group.getBounds().pad(0.1));
+                }
+                
+                // Update visit tabs
+                try {
+                    updateVisitTabs();
+                } catch (e) {
+                    console.warn('Visit tab update failed:', e);
                 }
             }, 100); // 100ms delay for better UX
         });
@@ -895,6 +989,9 @@
                     } else {
                         map.setView([39.8283, -98.5795], 4);
                     }
+
+                    // Update visit tabs with new data
+                    updateVisitTabs();
 
                     // Update statistics
                     updateStats();
@@ -1098,19 +1195,757 @@
             alert('Full notifications page coming soon!');
         }
 
-        // Event listeners
-        document.addEventListener('DOMContentLoaded', function() {
-            // Load initial notification count
-            loadNotificationCount();
+        // Visit Analysis Functions
+        function analyzeVisitData(locations) {
+            if (!locations || locations.length === 0) {
+                return {};
+            }
             
-            // Load notifications when dropdown is opened
-            document.getElementById('notificationDropdown').addEventListener('click', function() {
-                loadNotifications();
+            // Group locations by device
+            const deviceLocations = {};
+            locations.forEach(loc => {
+                const deviceName = loc.device_name;
+                if (!deviceLocations[deviceName]) {
+                    deviceLocations[deviceName] = [];
+                }
+                deviceLocations[deviceName].push({
+                    ...loc,
+                    timestamp: parseUtcTimestamp(loc.timestamp),
+                    latitude: parseFloat(loc.latitude),
+                    longitude: parseFloat(loc.longitude)
+                });
             });
             
-            // Poll for new notifications every 30 seconds
-            setInterval(loadNotificationCount, 30000);
-        });
+            // Analyze visits for each device
+            const deviceVisits = {};
+            Object.keys(deviceLocations).forEach(deviceName => {
+                deviceVisits[deviceName] = analyzeDeviceVisits(deviceLocations[deviceName]);
+            });
+            
+            return deviceVisits;
+        }
+        
+        function analyzeDeviceVisits(deviceLocs) {
+            if (!deviceLocs || deviceLocs.length === 0) return [];
+            
+            console.log(`📍 Analyzing ${deviceLocs.length} locations for device`);
+            
+            // Sort by timestamp
+            deviceLocs.sort((a, b) => a.timestamp - b.timestamp);
+            
+            // Step 1: Cluster locations by coordinates to identify distinct places
+            const locationClusters = clusterLocationsByCoordinates(deviceLocs);
+            console.log(`🗺️ Found ${locationClusters.length} distinct location clusters`);
+            
+            const activities = [];
+            
+            // Step 2: Analyze each cluster for visits and drives
+            for (let i = 0; i < deviceLocs.length; i++) {
+                const loc = deviceLocs[i];
+                const cluster = findClusterForLocation(loc, locationClusters);
+                loc.clusterId = cluster.id;
+                loc.clusterCenter = cluster.center;
+            }
+            
+            // Step 3: Group consecutive points by cluster and create visits/drives
+            let currentSegment = null;
+            let lastProcessedSegment = null;
+            
+            for (let i = 0; i < deviceLocs.length; i++) {
+                const loc = deviceLocs[i];
+                
+                if (!currentSegment || currentSegment.clusterId !== loc.clusterId) {
+                    // Finish previous segment
+                    if (currentSegment) {
+                        const segmentActivities = processSegment(currentSegment);
+                        activities.push(...segmentActivities);
+                        
+                        // Check if we need to create a drive between segments
+                        if (lastProcessedSegment && lastProcessedSegment.clusterId !== currentSegment.clusterId) {
+                            const drive = createDriveBetweenSegments(lastProcessedSegment, currentSegment);
+                            if (drive) {
+                                activities.push(drive);
+                            }
+                        }
+                        
+                        lastProcessedSegment = currentSegment;
+                    }
+                    
+                    // Start new segment
+                    currentSegment = {
+                        clusterId: loc.clusterId,
+                        clusterCenter: loc.clusterCenter,
+                        locations: [loc],
+                        startTime: loc.timestamp,
+                        endTime: loc.timestamp
+                    };
+                } else {
+                    // Extend current segment
+                    currentSegment.locations.push(loc);
+                    currentSegment.endTime = loc.timestamp;
+                }
+            }
+            
+            // Process final segment
+            if (currentSegment) {
+                const segmentActivities = processSegment(currentSegment);
+                activities.push(...segmentActivities);
+                
+                // Check if we need to create a drive between segments
+                if (lastProcessedSegment && lastProcessedSegment.clusterId !== currentSegment.clusterId) {
+                    const drive = createDriveBetweenSegments(lastProcessedSegment, currentSegment);
+                    if (drive) {
+                        activities.push(drive);
+                    }
+                }
+            }
+            
+            // Sort activities by start time
+            activities.sort((a, b) => {
+                const aTime = a.type === 'visit' ? a.arrival : a.start_time;
+                const bTime = b.type === 'visit' ? b.arrival : b.start_time;
+                return aTime - bTime;
+            });
+            
+            console.log(`📊 Created ${activities.filter(a => a.type === 'visit').length} visits and ${activities.filter(a => a.type === 'drive').length} drives`);
+            return activities;
+        }
+        
+        function clusterLocationsByCoordinates(locations) {
+            const clusters = [];
+            const CLUSTER_THRESHOLD = 0.003; // ~300m clustering radius
+            const JITTER_THRESHOLD = 0.0005; // ~55m jitter smoothing
+            
+            for (const loc of locations) {
+                let assignedCluster = null;
+                
+                // Find nearest cluster
+                for (const cluster of clusters) {
+                    const distance = calculateDistance(
+                        loc.latitude, loc.longitude,
+                        cluster.center.lat, cluster.center.lng
+                    );
+                    
+                    if (distance < CLUSTER_THRESHOLD || distance < JITTER_THRESHOLD) {
+                        assignedCluster = cluster;
+                        break;
+                    }
+                }
+                
+                if (assignedCluster) {
+                    // Add to existing cluster and update center
+                    assignedCluster.locations.push(loc);
+                    const lats = assignedCluster.locations.map(l => l.latitude);
+                    const lngs = assignedCluster.locations.map(l => l.longitude);
+                    assignedCluster.center = {
+                        lat: lats.reduce((a, b) => a + b, 0) / lats.length,
+                        lng: lngs.reduce((a, b) => a + b, 0) / lngs.length
+                    };
+                } else {
+                    // Create new cluster
+                    clusters.push({
+                        id: clusters.length,
+                        center: { lat: loc.latitude, lng: loc.longitude },
+                        locations: [loc]
+                    });
+                }
+            }
+            
+            return clusters;
+        }
+        
+        function findClusterForLocation(location, clusters) {
+            const CLUSTER_THRESHOLD = 0.003;
+            
+            for (const cluster of clusters) {
+                const distance = calculateDistance(
+                    location.latitude, location.longitude,
+                    cluster.center.lat, cluster.center.lng
+                );
+                
+                if (distance < CLUSTER_THRESHOLD) {
+                    return cluster;
+                }
+            }
+            
+            // Shouldn't happen, but fallback
+            return clusters[0];
+        }
+        
+        function processSegment(segment) {
+            const activities = [];
+            const durationMinutes = (segment.endTime - segment.startTime) / (1000 * 60);
+            
+            // If segment is at a location for >= 15 minutes, it's a visit
+            if (durationMinutes >= 15) {
+                activities.push({
+                    type: 'visit',
+                    latitude: segment.clusterCenter.lat,
+                    longitude: segment.clusterCenter.lng,
+                    arrival: segment.startTime,
+                    departure: segment.endTime,
+                    duration_minutes: Math.round(durationMinutes),
+                    location_count: segment.locations.length,
+                    address: null
+                });
+                
+                console.log(`✅ VISIT: ${Math.round(durationMinutes)} minutes at cluster ${segment.clusterId}`);
+            }
+            
+            return activities;
+        }
+        
+        function createDriveBetweenSegments(fromSegment, toSegment) {
+            // Only create drives between different clusters
+            if (fromSegment.clusterId === toSegment.clusterId) {
+                return null;
+            }
+            
+            const distanceKm = calculateDistanceKm(
+                fromSegment.clusterCenter.lat, fromSegment.clusterCenter.lng,
+                toSegment.clusterCenter.lat, toSegment.clusterCenter.lng
+            );
+            
+            // Only create drives for meaningful distances (>0.5km)
+            if (distanceKm < 0.5) {
+                return null;
+            }
+            
+            const durationMinutes = (toSegment.startTime - fromSegment.endTime) / (1000 * 60);
+            if (!Number.isFinite(durationMinutes) || durationMinutes <= 0) {
+                return null;
+            }
+            const avgSpeedKmh = durationMinutes > 0 ? (distanceKm / (durationMinutes / 60)) : 0;
+            
+            // Filter out impossible speeds (>200 km/h)
+            if (avgSpeedKmh > 200) {
+                console.log(`🚫 REJECTED DRIVE: ${avgSpeedKmh.toFixed(1)} km/h too fast`);
+                return null;
+            }
+            
+            console.log(`🚗 DRIVE: ${distanceKm.toFixed(2)}km, ${avgSpeedKmh.toFixed(1)} km/h, ${durationMinutes.toFixed(1)} min`);
+            
+            // Normalize to UI schema (type 'driving' and expected fields)
+            return {
+                type: 'driving',
+                from_latitude: fromSegment.clusterCenter.lat,
+                from_longitude: fromSegment.clusterCenter.lng,
+                to_latitude: toSegment.clusterCenter.lat,
+                to_longitude: toSegment.clusterCenter.lng,
+                departure: fromSegment.endTime,
+                arrival: toSegment.startTime,
+                duration_minutes: Math.round(durationMinutes),
+                distance_km: parseFloat(distanceKm.toFixed(2)),
+                distance_miles: parseFloat((distanceKm * 0.621371).toFixed(1)),
+                average_speed_kmh: parseFloat(avgSpeedKmh.toFixed(1)),
+                actual_route: false,
+                estimated_duration_minutes: Math.round(durationMinutes),
+                route_pending: true
+            };
+        }
+        
+        function calculateDistance(lat1, lng1, lat2, lng2) {
+            // Simple Euclidean distance for clustering (good enough for short distances)
+            const latDiff = lat1 - lat2;
+            const lngDiff = lng1 - lng2;
+            return Math.sqrt(latDiff * latDiff + lngDiff * lngDiff);
+        }
+        
+        function calculateDistanceKm(lat1, lng1, lat2, lng2) {
+            // Haversine formula for accurate distance in kilometers
+            const R = 6371; // Earth's radius in km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLng = (lng2 - lng1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                     Math.sin(dLng/2) * Math.sin(dLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+        
+        async function createDrivingSegment(fromCluster, toCluster) {
+            const timeDiffMs = toCluster.arrival - fromCluster.departure;
+            const timeDiffMinutes = Math.round(timeDiffMs / (1000 * 60));
+            
+            // Try to get actual route data
+            const routeData = await getRouteData(
+                fromCluster.latitude, fromCluster.longitude,
+                toCluster.latitude, toCluster.longitude
+            );
+            
+            let distanceKm, distanceMiles, estimatedDuration;
+            
+            if (routeData && routeData.distance) {
+                // Use actual route distance
+                distanceKm = routeData.distance / 1000; // Convert meters to km
+                distanceMiles = distanceKm * 0.621371;
+                estimatedDuration = Math.round(routeData.duration / 60); // Convert seconds to minutes
+            } else {
+                // Fallback to straight-line distance
+                console.warn('Route data not available, using straight-line distance');
+                distanceKm = calculateDistanceKm(
+                    fromCluster.latitude, fromCluster.longitude,
+                    toCluster.latitude, toCluster.longitude
+                );
+                distanceMiles = distanceKm * 0.621371;
+                estimatedDuration = timeDiffMinutes;
+            }
+            
+            return {
+                type: 'driving',
+                from_latitude: fromCluster.latitude,
+                from_longitude: fromCluster.longitude,
+                to_latitude: toCluster.latitude,
+                to_longitude: toCluster.longitude,
+                departure: fromCluster.departure,
+                arrival: toCluster.arrival,
+                distance_km: Math.round(distanceKm * 10) / 10,
+                distance_miles: Math.round(distanceMiles * 10) / 10,
+                duration_minutes: timeDiffMinutes,
+                estimated_duration_minutes: estimatedDuration,
+                actual_route: routeData ? true : false,
+                from_address: null,
+                to_address: null
+            };
+        }
+        
+        async function getRouteData(fromLat, fromLng, toLat, toLng) {
+            try {
+                // Use OpenRouteService API (free, no API key required for basic usage)
+                const url = `https://api.openrouteservice.org/v2/directions/driving-car?start=${fromLng},${fromLat}&end=${toLng},${toLat}`;
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 5000 // 5 second timeout
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.features && data.features.length > 0) {
+                    const route = data.features[0];
+                    const distance = route.properties.segments[0].distance; // meters
+                    const duration = route.properties.segments[0].duration; // seconds
+                    
+                    return {
+                        distance: distance,
+                        duration: duration,
+                        geometry: route.geometry // GeoJSON LineString for route path
+                    };
+                }
+                
+                return null;
+            } catch (error) {
+                console.warn('OpenRouteService failed, trying fallback:', error);
+                return await getRouteDataFallback(fromLat, fromLng, toLat, toLng);
+            }
+        }
+        
+        async function getRouteDataFallback(fromLat, fromLng, toLat, toLng) {
+            try {
+                // Fallback to OSRM (Open Source Routing Machine)
+                const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false&steps=false`;
+                
+                const response = await fetch(url, {
+                    timeout: 3000 // 3 second timeout for fallback
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.routes && data.routes.length > 0) {
+                    const route = data.routes[0];
+                    return {
+                        distance: route.distance, // meters
+                        duration: route.duration, // seconds
+                        geometry: null // OSRM geometry not needed for basic distance/time
+                    };
+                }
+                
+                return null;
+            } catch (error) {
+                console.warn('All routing services failed:', error);
+                return null;
+            }
+        }
+        
+        function finalizeVisit(visit) {
+            const durationMs = visit.departure - visit.arrival;
+            const durationMinutes = Math.round(durationMs / (1000 * 60));
+            
+            return {
+                latitude: visit.latitude,
+                longitude: visit.longitude,
+                arrival: visit.arrival,
+                departure: visit.departure,
+                duration_minutes: durationMinutes,
+                location_count: visit.locations.length,
+                address: null // Will be populated by getAddressForVisit
+            };
+        }
+        
+        async function getAddressForVisit(latitude, longitude) {
+            try {
+                // Try to get cached address first
+                const response = await fetch(`/api/address?lat=${latitude}&lng=${longitude}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    return data.address || `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+                }
+            } catch (error) {
+                console.warn('Error fetching address:', error);
+            }
+            
+            // Fallback to coordinates
+            return `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+        }
+        
+        function formatDuration(minutes) {
+            if (minutes < 60) {
+                return `${minutes}m`;
+            } else {
+                const hours = Math.floor(minutes / 60);
+                const mins = minutes % 60;
+                return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+            }
+        }
+        
+        async function updateVisitTabs() {
+            const deviceVisits = analyzeVisitData(locations || []);
+            const deviceNames = Object.keys(deviceVisits);
+            
+            // Debug logging
+            console.log('Total locations:', locations.length);
+            console.log('Device visits:', deviceVisits);
+            deviceNames.forEach(device => {
+                const activities = deviceVisits[device];
+                const visits = activities.filter(a => a.type === 'visit');
+                const drives = activities.filter(a => a.type === 'driving');
+                console.log(`${device}: ${visits.length} visits, ${drives.length} drives`);
+            });
+            
+            const tabsContainer = document.getElementById('deviceTabs');
+            const contentContainer = document.getElementById('deviceTabContent');
+            const noDataDiv = document.getElementById('noVisitData');
+            if (!tabsContainer || !contentContainer) {
+                console.warn('Visit tabs containers not found in DOM');
+                return;
+            }
+            
+            if (!deviceNames || deviceNames.length === 0) {
+                tabsContainer.innerHTML = '';
+                contentContainer.innerHTML = '';
+                noDataDiv.style.display = 'block';
+                return;
+            }
+            
+            noDataDiv.style.display = 'none';
+            
+            // Generate tabs
+            let tabsHtml = '';
+            let contentHtml = '';
+            
+            for (let i = 0; i < deviceNames.length; i++) {
+                const deviceName = deviceNames[i];
+                const activities = deviceVisits[deviceName];
+                const visitCount = activities.filter(a => a.type === 'visit').length;
+                const drivingCount = activities.filter(a => a.type === 'driving').length;
+                const isActive = i === 0 ? 'active' : '';
+                const isSelected = i === 0 ? 'true' : 'false';
+                const tabId = `device-tab-${deviceName.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                const contentId = `device-content-${deviceName.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                
+                // Only show badge if there are activities
+                const badgeHtml = (visitCount > 0 || drivingCount > 0) ? 
+                    `<span class="badge ms-2">${visitCount}v ${drivingCount}d</span>` : '';
+                
+                // Tab navigation item
+                tabsHtml += `
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link ${isActive}" id="${tabId}" data-bs-toggle="tab" 
+                                data-bs-target="#${contentId}" type="button" role="tab" 
+                                aria-controls="${contentId}" aria-selected="${isSelected}">
+                            <i class="fas fa-mobile-alt me-1"></i>${deviceName}
+                            ${badgeHtml}
+                        </button>
+                    </li>
+                `;
+                
+                // Tab content
+                contentHtml += `
+                    <div class="tab-pane fade ${isActive} show" id="${contentId}" role="tabpanel" aria-labelledby="${tabId}">
+                        <div id="visits-${contentId}">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <p class="mt-2 mb-0">Loading visit details...</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            tabsContainer.innerHTML = tabsHtml;
+            contentContainer.innerHTML = contentHtml;
+            
+            // Populate visit details for each device (sequential to avoid UI thrash)
+            for (const deviceName of deviceNames) {
+                await populateVisitDetails(deviceName, deviceVisits[deviceName] || []);
+            }
+        }
+        
+        async function populateVisitDetails(deviceName, activities) {
+            const safeName = deviceName.replace(/[^a-zA-Z0-9]/g, '-');
+            const contentId = `device-content-${safeName}`;
+            const visitsContainer = document.getElementById(`visits-${contentId}`);
+            
+            if (activities.length === 0) {
+                visitsContainer.innerHTML = `
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-map-marker-alt fa-2x mb-2"></i>
+                        <p>No activities found for ${deviceName}</p>
+                        <small>Activities include visits (2+ minutes) and driving segments</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            let activitiesHtml = '';
+            
+            // Sort activities by time
+            activities.sort((a, b) => {
+                const timeA = a.type === 'visit' ? a.arrival : a.departure;
+                const timeB = b.type === 'visit' ? b.arrival : b.departure;
+                return timeA - timeB;
+            });
+            
+            // Process activities and get addresses - show immediate results
+            await populateVisitDetailsContent(activities, visitsContainer);
+            
+            // Update driving segments with actual route data in background
+            updateDrivingSegmentsWithRouteData(activities).then(() => {
+                console.log('Route data updated, re-rendering...');
+                populateVisitDetailsContent(activities, visitsContainer);
+            }).catch(error => {
+                console.warn('Route data update failed:', error);
+            });
+        }
+        
+        async function populateVisitDetailsContent(activities, visitsContainer) {
+            console.log('populateVisitDetailsContent called with', activities.length, 'activities');
+            let activitiesHtml = '';
+            
+            if (activities.length === 0) {
+                visitsContainer.innerHTML = `
+                    <div class="text-center text-muted py-4">
+                        <i class="fas fa-map-marker-alt fa-2x mb-2"></i>
+                        <p>No activities found</p>
+                        <small>Activities include visits (2+ minutes) and driving segments</small>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Process activities and get addresses
+            for (let i = 0; i < activities.length; i++) {
+                const activity = activities[i];
+                console.log(`Processing activity ${i+1}/${activities.length}:`, activity.type);
+                
+                if (activity.type === 'visit') {
+                    // Get address for this visit
+                    const address = await getAddressForVisit(activity.latitude, activity.longitude);
+                    
+                    const arrivalTime = formatTimestampForUser(activity.arrival.toISOString());
+                    const departureTime = formatTimestampForUser(activity.departure.toISOString());
+                    const duration = formatDuration(activity.duration_minutes);
+                    
+                    activitiesHtml += `
+                        <div class="visit-item" onclick="centerMapOnLocation(${activity.latitude}, ${activity.longitude})">
+                            <div class="visit-location">
+                                <i class="fas fa-map-marker-alt me-2 text-primary"></i>
+                                ${address}
+                            </div>
+                            <div class="visit-times">
+                                <div class="visit-time-item arrival">
+                                    <i class="fas fa-sign-in-alt"></i>
+                                    Arrived: ${arrivalTime}
+                                </div>
+                                <div class="visit-time-item departure">
+                                    <i class="fas fa-sign-out-alt"></i>
+                                    Left: ${departureTime}
+                                </div>
+                                <div class="visit-time-item duration">
+                                    <i class="fas fa-clock"></i>
+                                    Duration: ${duration}
+                                </div>
+                            </div>
+                            <div class="visit-coordinates">
+                                ${activity.latitude.toFixed(6)}, ${activity.longitude.toFixed(6)} 
+                                • ${activity.location_count} location points
+                            </div>
+                        </div>
+                    `;
+                } else if (activity.type === 'driving') {
+                    // Get addresses for driving segment
+                    const fromAddress = await getAddressForVisit(activity.from_latitude, activity.from_longitude);
+                    const toAddress = await getAddressForVisit(activity.to_latitude, activity.to_longitude);
+                    
+                    const startTime = formatTimestampForUser(activity.departure.toISOString());
+                    const endTime = formatTimestampForUser(activity.arrival.toISOString());
+                    const duration = formatDuration(activity.duration_minutes);
+                    
+                    // Simplify addresses for driving display
+                    const fromSimple = simplifyAddress(fromAddress);
+                    const toSimple = simplifyAddress(toAddress);
+                    
+                    const actualSpeed = calculateAverageSpeed(activity.distance_miles, activity.duration_minutes);
+                    const estimatedSpeed = activity.estimated_duration_minutes ? 
+                        calculateAverageSpeed(activity.distance_miles, activity.estimated_duration_minutes) : null;
+                    
+                    // Determine route accuracy indicator
+                    const routeIndicator = activity.actual_route ? 
+                        '<i class="fas fa-check-circle text-success" title="Actual road route"></i>' :
+                        '<i class="fas fa-ruler text-warning" title="Estimated route"></i>';
+                    
+                    activitiesHtml += `
+                        <div class="driving-segment">
+                            <div class="driving-icon">
+                                <i class="fas fa-car"></i>
+                            </div>
+                            <div class="driving-details">
+                                <div class="driving-route">
+                                    Drove from <strong>${fromSimple}</strong> to <strong>${toSimple}</strong>
+                                    ${routeIndicator}
+                                </div>
+                                <div class="driving-stats">
+                                    <div class="driving-stat">
+                                        <i class="fas fa-play"></i>
+                                        Started: ${startTime}
+                                    </div>
+                                    <div class="driving-stat">
+                                        <i class="fas fa-stop"></i>
+                                        Arrived: ${endTime}
+                                    </div>
+                                    <div class="driving-stat">
+                                        <i class="fas fa-route"></i>
+                                        ${activity.distance_miles} mi${activity.actual_route ? ' (road)' : ' (est.)'}
+                                    </div>
+                                    <div class="driving-stat">
+                                        <i class="fas fa-clock"></i>
+                                        ${duration} total
+                                    </div>
+                                    <div class="driving-stat">
+                                        <i class="fas fa-tachometer-alt"></i>
+                                        ${actualSpeed} mph avg
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            visitsContainer.innerHTML = activitiesHtml;
+        }
+        
+        async function updateDrivingSegmentsWithRouteData(activities) {
+            const drivingSegments = activities.filter(a => a.type === 'driving' && a.route_pending);
+            
+            console.log(`Updating ${drivingSegments.length} driving segments with route data...`);
+            
+            // Process driving segments in parallel (but limit concurrent requests)
+            const batchSize = 3; // Process 3 routes at a time to avoid overwhelming APIs
+            for (let i = 0; i < drivingSegments.length; i += batchSize) {
+                const batch = drivingSegments.slice(i, i + batchSize);
+                
+                await Promise.all(batch.map(async (segment) => {
+                    try {
+                        const routeData = await getRouteData(
+                            segment.from_latitude, segment.from_longitude,
+                            segment.to_latitude, segment.to_longitude
+                        );
+                        
+                        if (routeData && routeData.distance) {
+                            // Update with actual route data
+                            segment.distance_km = Math.round((routeData.distance / 1000) * 10) / 10;
+                            segment.distance_miles = Math.round(segment.distance_km * 0.621371 * 10) / 10;
+                            segment.estimated_duration_minutes = Math.round(routeData.duration / 60);
+                            segment.actual_route = true;
+                            segment.route_pending = false;
+                            
+                            console.log(`Updated route: ${segment.distance_miles} mi (was ${Math.round(calculateDistanceKm(segment.from_latitude, segment.from_longitude, segment.to_latitude, segment.to_longitude) * 0.621371 * 10) / 10} mi straight-line)`);
+                        } else {
+                            // Keep straight-line data but mark as estimated
+                            segment.route_pending = false;
+                            segment.actual_route = false;
+                        }
+                    } catch (error) {
+                        console.warn('Failed to get route data for segment:', error);
+                        segment.route_pending = false;
+                        segment.actual_route = false;
+                    }
+                }));
+                
+                // Small delay between batches to be nice to the APIs
+                if (i + batchSize < drivingSegments.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+        }
+        
+        function simplifyAddress(fullAddress) {
+            if (!fullAddress || fullAddress.includes('Location (')) {
+                return 'Unknown Location';
+            }
+            
+            // Extract meaningful parts - take first part before comma, or city name
+            const parts = fullAddress.split(',');
+            if (parts.length >= 2) {
+                // Try to get street name and city
+                const street = parts[0].trim();
+                const city = parts[1].trim();
+                
+                // If street is too long, just use city
+                if (street.length > 25) {
+                    return city;
+                }
+                return `${street}, ${city}`;
+            }
+            
+            return parts[0].trim();
+        }
+        
+        function calculateAverageSpeed(distanceMiles, durationMinutes) {
+            if (durationMinutes <= 0) return 0;
+            const speedMph = (distanceMiles / durationMinutes) * 60;
+            return Math.round(speedMph);
+        }
+        
+        function centerMapOnLocation(latitude, longitude) {
+            if (map) {
+                map.setView([latitude, longitude], 16);
+                
+                // Find and open popup for this location if it exists
+                markersLayer.eachLayer(function(marker) {
+                    const markerPos = marker.getLatLng();
+                    const distance = Math.abs(markerPos.lat - latitude) + Math.abs(markerPos.lng - longitude);
+                    if (distance < 0.001) { // Close enough
+                        marker.openPopup();
+                    }
+                });
+            }
+        }
+
+        // Notification system is handled globally via static/js/notifications.js
     </script>
-</body>
-</html>
+{% endblock %}

@@ -1,0 +1,172 @@
+<nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+        <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+            <i class="fas fa-map-marker-alt me-2"></i>iTrax
+        </a>
+        
+        <!-- Mobile Hamburger Button -->
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        
+        <!-- Collapsible Navigation -->
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <div class="navbar-nav ms-auto">
+                
+                <!-- Tracking Group -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if request.endpoint in ['dashboard', 'heatmap_overview', 'historical_playback', 'search_overview'] %}active{% endif %}" 
+                       href="#" id="trackingDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-map me-1"></i>Tracking
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="trackingDropdown">
+                        <li><a class="dropdown-item {% if request.endpoint == 'dashboard' %}active{% endif %}" 
+                               href="{{ url_for('dashboard') }}">
+                            <i class="fas fa-home me-2"></i>Dashboard
+                        </a></li>
+                        <li><a class="dropdown-item {% if request.endpoint == 'heatmap_overview' %}active{% endif %}" 
+                               href="{{ url_for('heatmap_overview') }}">
+                            <i class="fas fa-fire me-2"></i>Heatmap
+                        </a></li>
+                        <li><a class="dropdown-item {% if request.endpoint == 'historical_playback' %}active{% endif %}" 
+                               href="{{ url_for('historical_playback') }}">
+                            <i class="fas fa-play me-2"></i>Playback
+                        </a></li>
+                        <li><a class="dropdown-item {% if request.endpoint == 'search_overview' %}active{% endif %}" 
+                               href="{{ url_for('search_overview') }}">
+                            <i class="fas fa-search me-2"></i>Search
+                        </a></li>
+                    </ul>
+                </div>
+                
+                <!-- Analytics Group -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if request.endpoint in ['analytics_dashboard', 'travel_reports', 'device_analytics'] %}active{% endif %}" 
+                       href="#" id="analyticsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-chart-line me-1"></i>Analytics
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="analyticsDropdown">
+                        <li><a class="dropdown-item {% if request.endpoint == 'analytics_dashboard' %}active{% endif %}" 
+                               href="{{ url_for('analytics_dashboard') }}">
+                            <i class="fas fa-chart-bar me-2"></i>Analytics Dashboard
+                        </a></li>
+                        <li><a class="dropdown-item {% if request.endpoint == 'travel_reports' %}active{% endif %}" 
+                               href="{{ url_for('travel_reports') }}">
+                            <i class="fas fa-file-alt me-2"></i>Travel Reports
+                        </a></li>
+                        {% if route_exists('device_analytics') %}
+                        <li><a class="dropdown-item {% if request.endpoint == 'device_analytics' %}active{% endif %}" 
+                               href="{{ url_for('device_analytics') }}">
+                            <i class="fas fa-mobile-alt me-2"></i>Device Analytics
+                        </a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                <!-- Security Group -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if request.endpoint in ['geofences_overview', 'notifications_overview', 'all_notifications'] %}active{% endif %}" 
+                       href="#" id="securityDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-shield-alt me-1"></i>Security
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="securityDropdown">
+                        <li><a class="dropdown-item {% if request.endpoint == 'geofences_overview' %}active{% endif %}" 
+                               href="{{ url_for('geofences_overview') }}">
+                            <i class="fas fa-map-marked-alt me-2"></i>Geofences
+                        </a></li>
+                        <li><a class="dropdown-item {% if request.endpoint == 'notifications_overview' %}active{% endif %}" 
+                               href="{{ url_for('notifications_overview') }}">
+                            <i class="fas fa-bell me-2"></i>Notifications
+                        </a></li>
+                        {% if route_exists('all_notifications') %}
+                        <li><a class="dropdown-item {% if request.endpoint == 'all_notifications' %}active{% endif %}" 
+                               href="{{ url_for('all_notifications') }}">
+                            <i class="fas fa-history me-2"></i>All Notifications
+                        </a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                <!-- Management Group -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle {% if request.endpoint in ['device_management', 'user_management', 'gps_logs'] %}active{% endif %}" 
+                       href="#" id="managementDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-cogs me-1"></i>Management
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="managementDropdown">
+                        <li><a class="dropdown-item {% if request.endpoint == 'device_management' %}active{% endif %}" 
+                               href="{{ url_for('device_management') }}">
+                            <i class="fas fa-mobile-alt me-2"></i>Devices
+                        </a></li>
+                        {% if current_user.is_admin() %}
+                        <li><a class="dropdown-item {% if request.endpoint == 'user_management' %}active{% endif %}" 
+                               href="{{ url_for('user_management') }}">
+                            <i class="fas fa-users me-2"></i>Users
+                        </a></li>
+                        {% endif %}
+                        {% if route_exists('gps_logs') %}
+                        <li><a class="dropdown-item {% if request.endpoint == 'gps_logs' %}active{% endif %}" 
+                               href="{{ url_for('gps_logs') }}">
+                            <i class="fas fa-list me-2"></i>GPS Logs
+                        </a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+                
+                <!-- Settings (standalone) -->
+                <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" 
+                   href="{{ url_for('settings') }}">
+                    <i class="fas fa-cog me-1"></i>Settings
+                </a>
+                
+                <!-- Notification Bell -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle position-relative" href="#" id="notificationDropdown" 
+                       role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-bell"></i>
+                        <span id="notificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger notification-badge" 
+                              style="display: none;">0</span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-end notification-dropdown" aria-labelledby="notificationDropdown">
+                        <h6 class="dropdown-header">
+                            <i class="fas fa-bell me-2"></i>Recent Notifications
+                        </h6>
+                        <div id="notificationList">
+                            <div class="dropdown-item text-muted">
+                                <i class="fas fa-info-circle me-2"></i>No new notifications
+                            </div>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a class="dropdown-item text-center" href="{{ url_for('notifications_overview') }}">
+                            <i class="fas fa-eye me-1"></i>View All Notifications
+                        </a>
+                    </div>
+                </div>
+                
+                <!-- User Menu -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" 
+                       data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-user-circle me-1"></i>{{ current_user.username if current_user.is_authenticated else 'User' }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                        {% if current_user.is_authenticated %}
+                        <li><a class="dropdown-item" href="{{ url_for('settings') }}">
+                            <i class="fas fa-user-cog me-2"></i>Profile
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                            <i class="fas fa-sign-out-alt me-2"></i>Logout
+                        </a></li>
+                        {% else %}
+                        <li><a class="dropdown-item" href="{{ url_for('login') }}">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a></li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</nav>

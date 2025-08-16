@@ -1,179 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Settings - iTrax</title>
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block title %}Settings - iTrax{% endblock %}
+
+{% block extra_css %}
     <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .navbar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        .navbar-brand, .nav-link {
-            color: white !important;
-        }
-        .nav-link:hover {
-            color: #e3f2fd !important;
-        }
-        .main-content {
-            padding: 2rem 0;
-        }
-        .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-            margin-bottom: 1.5rem;
-        }
-        .card-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 15px 15px 0 0 !important;
-            border: none;
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 10px;
-        }
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #5a67d8 0%, #6b5b95 100%);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
-        .form-control, .form-select {
-            border-radius: 10px;
-            border: 2px solid #e9ecef;
-            transition: all 0.3s ease;
-        }
-        .form-control:focus, .form-select:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-        .timezone-info {
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            padding: 1rem;
-            border-radius: 0 10px 10px 0;
-            margin: 1rem 0;
-        }
-        .setting-group {
-            padding: 1.5rem;
-            background: white;
-            border-radius: 10px;
-            margin-bottom: 1rem;
-            border: 1px solid #e9ecef;
-        }
-        .setting-group h6 {
-            color: #667eea;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-        .preview-box {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 8px;
-            padding: 1rem;
-            font-family: monospace;
-            margin-top: 0.5rem;
-        }
-
-        /* Mobile responsiveness */
-        @media (max-width: 768px) {
-            .main-content {
-                padding: 1rem 0;
-            }
-            .card {
-                margin: 0 0.5rem 1rem;
-            }
-        }
+        .card { border: none; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
+        .card-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px 15px 0 0 !important; border: none; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 10px; }
+        .btn-primary:hover { background: linear-gradient(135deg, #5a67d8 0%, #6b5b95 100%); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .form-control, .form-select { border-radius: 10px; border: 2px solid #e9ecef; transition: all 0.3s ease; }
+        .form-control:focus, .form-select:focus { border-color: #667eea; box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25); }
+        .timezone-info { background: #f8f9fa; border-left: 4px solid #667eea; padding: 1rem; border-radius: 0 10px 10px 0; margin: 1rem 0; }
+        .setting-group { padding: 1.5rem; background: white; border-radius: 10px; margin-bottom: 1rem; border: 1px solid #e9ecef; }
+        .setting-group h6 { color: #667eea; font-weight: 600; margin-bottom: 1rem; }
+        .preview-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 1rem; font-family: monospace; margin-top: 0.5rem; }
     </style>
-</head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('dashboard') }}">
-                <i class="fas fa-map-marked-alt me-2"></i>iTrax
-            </a>
-            
-            <!-- Mobile Menu Button -->
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('dashboard') }}">
-                            <i class="fas fa-home me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('analytics_dashboard') }}">
-                            <i class="fas fa-chart-bar me-1"></i>Analytics
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('geofences_overview') }}">
-                            <i class="fas fa-shield-alt me-1"></i>Geofences
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('notifications_overview') }}">
-                            <i class="fas fa-bell me-1"></i>Notifications
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('gps_logs') }}">
-                            <i class="fas fa-list me-1"></i>GPS Logs
-                        </a>
-                    </li>
-                </ul>
-                
-                <ul class="navbar-nav">
-                    <!-- Notification Bell -->
-                    <li class="nav-item dropdown me-3">
-                        <a class="nav-link position-relative" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-bell"></i>
-                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" id="notificationCount" style="display: none;">0</span>
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end" id="notificationList" style="width: 300px; max-height: 400px; overflow-y: auto;">
-                            <li><span class="dropdown-item-text">Loading notifications...</span></li>
-                        </ul>
-                    </li>
-                    
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                            <i class="fas fa-user me-1"></i>{{ current_user.id }}
-                        </a>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item active" href="{{ url_for('settings') }}">
-                                <i class="fas fa-cog me-1"></i>Settings
-                            </a></li>
-                            {% if current_user.get_user_data().get('is_admin') %}
-                            <li><a class="dropdown-item" href="{{ url_for('user_management') }}">
-                                <i class="fas fa-users-cog me-1"></i>User Management
-                            </a></li>
-                            {% endif %}
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
-                                <i class="fas fa-sign-out-alt me-1"></i>Logout
-                            </a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+{% endblock %}
 
-    <!-- Main Content -->
-    <div class="container-fluid main-content">
+{% block content %}
+    <div class="container-fluid">
         <div class="row justify-content-center">
             <div class="col-12 col-lg-8 col-xl-6">
                 <div class="card">
@@ -196,7 +41,7 @@
                         {% endwith %}
 
                         <form method="POST" id="settingsForm">
-                            {{ csrf_token() }}
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             
                             <!-- Timezone Settings -->
                             <div class="setting-group">
@@ -323,43 +168,22 @@
             </div>
         </div>
     </div>
+{% endblock %}
 
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+{% block extra_js %}
     <script>
-        // Initialize notifications system
-        document.addEventListener('DOMContentLoaded', function() {
-            initNotifications();
-        });
-
         // Time preview functionality
         function updateTimePreview() {
             const timezone = document.getElementById('timezone').value;
             const dateFormat = document.getElementById('date_format').value;
             const preview = document.getElementById('currentTimePreview');
             
-            // Get current time and format it
             const now = new Date();
-            
             try {
-                // Create a sample formatted time based on selection
                 let formattedTime;
-                const options = {
-                    timeZone: timezone,
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: dateFormat.includes('%I')
-                };
-                
+                const options = { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: dateFormat.includes('%I') };
                 const formatter = new Intl.DateTimeFormat('en-US', options);
                 const parts = formatter.formatToParts(now);
-                
-                // Build format based on selection
                 if (dateFormat === '%Y-%m-%d %I:%M:%S %p') {
                     formattedTime = `${parts.find(p => p.type === 'year').value}-${parts.find(p => p.type === 'month').value}-${parts.find(p => p.type === 'day').value} ${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value} ${parts.find(p => p.type === 'dayPeriod')?.value || ''}`;
                 } else if (dateFormat === '%Y-%m-%d %H:%M:%S') {
@@ -371,11 +195,8 @@
                 } else if (dateFormat === '%d/%m/%Y %H:%M:%S') {
                     formattedTime = `${parts.find(p => p.type === 'day').value}/${parts.find(p => p.type === 'month').value}/${parts.find(p => p.type === 'year').value} ${parts.find(p => p.type === 'hour').value}:${parts.find(p => p.type === 'minute').value}:${parts.find(p => p.type === 'second').value}`;
                 }
-                
-                // Get timezone abbreviation
                 const tzName = now.toLocaleDateString('en', {timeZone: timezone, timeZoneName: 'short'}).split(', ')[1];
                 formattedTime += ` ${tzName}`;
-                
                 preview.textContent = formattedTime;
             } catch (error) {
                 console.error('Error formatting time preview:', error);
@@ -383,16 +204,9 @@
             }
         }
 
-        // Update preview when settings change
         document.getElementById('timezone').addEventListener('change', updateTimePreview);
         document.getElementById('date_format').addEventListener('change', updateTimePreview);
-
-        // Initial preview update
-        document.addEventListener('DOMContentLoaded', function() {
-            updateTimePreview();
-            // Update preview every second
-            setInterval(updateTimePreview, 1000);
-        });
+        document.addEventListener('DOMContentLoaded', function() { updateTimePreview(); setInterval(updateTimePreview, 1000); });
 
         // Form submission handling
         document.getElementById('settingsForm').addEventListener('submit', function(e) {
@@ -401,5 +215,4 @@
             saveButton.disabled = true;
         });
     </script>
-</body>
-</html>
+{% endblock %}
