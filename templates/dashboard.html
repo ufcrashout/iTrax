@@ -589,6 +589,9 @@
                                         {% set device_locations = location_history|selectattr('device_name', 'equalto', device)|list %}
                                         {{ device_locations|length }} locations
                                     </small>
+                                    <div class="small text-muted mt-1" id="device-addr-{{ device | replace(' ', '-') | replace('.', '-') | replace("'", '-') | replace('/', '-') }}">
+                                        
+                                    </div>
                                 </div>
                             {% else %}
                                 <div class="text-center text-muted py-3">
@@ -893,6 +896,13 @@
                     updateVisitTabs();
                 } catch (e) {
                     console.warn('Visit tab update failed:', e);
+                }
+
+                // Update recent address display for each tracked device
+                try {
+                    updateDeviceAddresses();
+                } catch (e) {
+                    console.warn('Device address update failed:', e);
                 }
             }, 100); // 100ms delay for better UX
         });
@@ -1943,6 +1953,37 @@
                         marker.openPopup();
                     }
                 });
+            }
+        }
+
+        // Fill most recent address beneath tracked devices
+        async function updateDeviceAddresses() {
+            if (!locations || locations.length === 0) return;
+
+            const latestByDevice = new Map();
+            for (const loc of locations) {
+                const ts = parseUtcTimestamp(loc.timestamp);
+                const prev = latestByDevice.get(loc.device_name);
+                if (!prev || ts > prev.ts) {
+                    latestByDevice.set(loc.device_name, { ts, lat: parseFloat(loc.latitude), lng: parseFloat(loc.longitude) });
+                }
+            }
+
+            for (const [name, data] of latestByDevice.entries()) {
+                const elId = `device-addr-${name.replace(/\s/g, '-').replace(/\./g, '-').replace(/'/g, '-').replace(/\//g, '-')}`;
+                const el = document.getElementById(elId);
+                if (!el) continue;
+
+                let address = `${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}`;
+                try {
+                    const res = await fetch(`/api/address?lat=${data.lat}&lng=${data.lng}`);
+                    if (res.ok) {
+                        const j = await res.json();
+                        if (j && j.address) address = j.address;
+                    }
+                } catch (_) {}
+
+                el.innerHTML = `<i class="fas fa-map-marker-alt me-1"></i>${address}`;
             }
         }
 
