@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, url_for, request, flash, jsonify, session
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from functools import wraps
-from flask_wtf.csrf import CSRFProtect
+from flask_wtf.csrf import CSRFProtect, generate_csrf
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 try:
@@ -173,6 +173,12 @@ def serialize_location_row(row: dict) -> dict:
 
 # Initialize extensions
 csrf = CSRFProtect(app)
+
+# Make CSRF token and utility functions available in all templates
+@app.context_processor
+def inject_csrf_token():
+    return dict(csrf_token=generate_csrf, get_cst_now=get_cst_now)
+
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -260,6 +266,26 @@ def simple_timezone_filter(dt, timezone_str='America/Chicago'):
     except Exception as e:
         logger.error(f"Error in simple timezone filter: {e}")
         return str(dt) if dt else ''
+
+@app.template_filter('as_datetime')
+def as_datetime_filter(dt):
+    """Convert various datetime formats to datetime object for template calculations"""
+    if isinstance(dt, datetime):
+        return dt
+    elif isinstance(dt, str):
+        try:
+            # Try parsing common formats
+            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f']:
+                try:
+                    return datetime.strptime(dt, fmt)
+                except ValueError:
+                    continue
+            # If no format works, try direct parsing
+            return datetime.fromisoformat(dt.replace('Z', '+00:00'))
+        except:
+            return dt
+    else:
+        return dt
 
 # Context processor to make user settings available in all templates
 @app.context_processor
@@ -423,7 +449,12 @@ def dashboard():
         selected_date = request.args.get('date')  # Format: YYYY-MM-DD
         device_name = request.args.get('device')
         
-        # If date provided, show 24-hour movement for that date
+        # If no date provided, default to today's date in user timezone
+        if not selected_date:
+            today = get_cst_now().strftime('%Y-%m-%d')
+            selected_date = today
+        
+        # Show 24-hour movement for the selected date (or today if no date specified)
         if selected_date:
             try:
                 # Parse the date and create 24-hour period
@@ -434,45 +465,22 @@ def dashboard():
                 location_history = db.get_device_movement_24h(start_time, device_name)
                 
                 if not location_history:
-                    flash(f'No location data found for {selected_date}.', 'info')
+                    # Fallback: try to get recent data if nothing found for selected date
+                    recent_start = get_cst_now() - timedelta(hours=48)  # Try last 48 hours
+                    location_history = db.get_locations(
+                        start_time=recent_start.isoformat(),
+                        device_name=device_name,
+                        limit=100,
+                        cluster_locations=True
+                    )
+                    if not location_history:
+                        flash(f'No location data found for {selected_date} or recent dates.', 'info')
+                    else:
+                        flash(f'No data for {selected_date}. Showing recent data instead.', 'info')
                     
             except ValueError:
                 flash('Invalid date format. Please select a valid date.', 'error')
                 location_history = []
-        else:
-            # Default: Show recent locations (current day only) for all devices
-            recent_start = get_cst_now().replace(hour=0, minute=0, second=0, microsecond=0)
-            location_history = db.get_locations(
-                start_time=recent_start.isoformat(),
-                device_name=device_name,
-                limit=500,
-                cluster_locations=True
-            )
-            
-            if not location_history:
-                # Enhanced fallback: Show recent locations from last week per device
-                try:
-                    with db.get_connection() as conn:
-                        cursor = conn.cursor()
-                        cursor.execute('''
-                            SELECT l.*, d.device_type, d.is_active
-                            FROM locations l
-                            LEFT JOIN devices d ON l.device_id = d.id
-                            WHERE l.timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                            AND l.id IN (
-                                SELECT MAX(id) 
-                                FROM locations 
-                                WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-                                GROUP BY device_name
-                            )
-                            ORDER BY l.timestamp DESC
-                            LIMIT 100
-                        ''')
-                        rows = cursor.fetchall()
-                        location_history = list(rows)
-                except Exception as e:
-                    logger.error(f"Error getting recent locations per device: {e}")
-                    location_history = []
 
         # Get list of available devices for filter dropdown
         available_devices = []
@@ -1465,6 +1473,7 @@ def gps_logs():
         device_filter = request.args.get('device', '')
         start_date = request.args.get('start_date', '')
         end_date = request.args.get('end_date', '')
+        hide_stale = request.args.get('hide_stale', '') == '1'
         limit = int(request.args.get('limit', 500))
         page = int(request.args.get('page', 1))
         
@@ -1517,6 +1526,10 @@ def gps_logs():
                     where_conditions.append('DATE(timestamp) <= DATE(%s)')
                     params.append(end_date)
                 
+                # Filter out stale data if requested
+                if hide_stale:
+                    where_conditions.append('timestamp >= DATE_SUB(NOW(), INTERVAL 24 HOUR)')
+                
                 where_clause = ' AND '.join(where_conditions)
                 
                 # Use window function for efficient pagination with total count
@@ -1540,9 +1553,27 @@ def gps_logs():
             # Extract total count from first row if available
             if logs_data:
                 total_count = logs_data[0]['total_count']
-                # Remove total_count from each row as it's not needed in template
+                # Remove total_count from each row and calculate age
+                current_time = datetime.now()
                 for log in logs_data:
                     del log['total_count']
+                    
+                    # Calculate age of location data
+                    if log.get('timestamp'):
+                        try:
+                            # Convert timestamp to datetime if it's a string
+                            if isinstance(log['timestamp'], str):
+                                log_time = datetime.fromisoformat(log['timestamp'].replace('Z', '+00:00')).replace(tzinfo=None)
+                            else:
+                                log_time = log['timestamp']
+                            
+                            age_hours = (current_time - log_time).total_seconds() / 3600
+                            log['age_hours'] = round(age_hours, 1)
+                            log['is_stale'] = age_hours > 24
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Error calculating age for timestamp {log['timestamp']}: {e}")
+                            log['age_hours'] = 0
+                            log['is_stale'] = False
             else:
                 total_count = 0
             
@@ -1629,6 +1660,7 @@ def gps_logs():
                              device_filter=device_filter,
                              start_date=start_date,
                              end_date=end_date,
+                             hide_stale=hide_stale,
                              limit=limit,
                              page=page,
                              total_count=total_count,
@@ -2290,7 +2322,9 @@ def api_remove_device_nickname(device_name):
 def device_management():
     """Device management page with nickname editing"""
     try:
+        logger.info("Loading device management page...")
         devices = db.get_all_devices_with_nicknames()
+        logger.info(f"Device management loaded with {len(devices)} devices")
         return render_template('device_management.html', devices=devices)
     except Exception as e:
         logger.error(f"Error loading device management page: {e}")

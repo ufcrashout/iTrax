@@ -80,9 +80,10 @@ class iCloudTracker:
             logger.error(f"Failed to migrate existing data: {e}")
         
     def validate_location_data(self, location_data):
-        """Validate location data before saving, filter out invalid entries"""
+        """Validate location data before saving, filter out invalid entries and detect stale data"""
         required_fields = ['device_name', 'latitude', 'longitude', 'timestamp']
         valid_entries = []
+        current_time = datetime.now()
         
         for entry in location_data:
             is_valid = True
@@ -113,9 +114,22 @@ class iCloudTracker:
             if not is_valid:
                 continue
                 
-            # Validate timestamp
+            # Validate timestamp and check for stale data
             try:
-                datetime.fromisoformat(entry['timestamp'])
+                location_time = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
+                
+                # Check if location is older than 24 hours (likely stale)
+                age_hours = (current_time - location_time.replace(tzinfo=None)).total_seconds() / 3600
+                
+                if age_hours > 24:
+                    logger.warning(f"Potentially stale location data for {entry['device_name']}: {age_hours:.1f} hours old")
+                    # Mark as potentially stale but still save it (users can decide)
+                    entry['is_stale'] = True
+                    entry['age_hours'] = round(age_hours, 1)
+                else:
+                    entry['is_stale'] = False
+                    entry['age_hours'] = round(age_hours, 1)
+                    
             except ValueError:
                 logger.warning(f"Invalid timestamp format for {entry['device_name']}: {entry['timestamp']}")
                 is_valid = False
@@ -125,6 +139,11 @@ class iCloudTracker:
         
         if len(valid_entries) != len(location_data):
             logger.info(f"Filtered {len(location_data) - len(valid_entries)} invalid entries, {len(valid_entries)} valid entries remain")
+        
+        # Log stale data warnings
+        stale_count = sum(1 for entry in valid_entries if entry.get('is_stale', False))
+        if stale_count > 0:
+            logger.warning(f"Detected {stale_count} potentially stale location entries (>24h old)")
         
         return valid_entries
 

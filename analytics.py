@@ -11,9 +11,9 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 import pytz
 import pymysql
-from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
+from geocoding_manager import get_geocoding_manager, get_address_from_coordinates
 from collections import defaultdict
 import statistics
 import folium
@@ -28,14 +28,10 @@ logger = logging.getLogger(__name__)
 
 class LocationAnalytics:
     def __init__(self):
-        self.geocoder = Nominatim(user_agent="icloud-tracker-analytics")
         self.timezone = Config.get_timezone()
-        self.geocoding_enabled = True  # Flag to disable geocoding on persistent failures
-        self.failure_count = 0  # Track consecutive failures
-        self.last_failure_time = None
         
     def get_address_from_coordinates(self, latitude: float, longitude: float, use_cache: bool = True) -> Optional[str]:
-        """Get address from coordinates using reverse geocoding with SQL caching and failure handling"""
+        """Get address from coordinates using multi-provider geocoding with SQL caching"""
         
         # Check SQL cache first
         if use_cache:
@@ -43,58 +39,32 @@ class LocationAnalytics:
             if cached_address:
                 return cached_address
         
-        # Check if geocoding is temporarily disabled due to persistent failures
-        if not self.geocoding_enabled:
-            # Re-enable geocoding after 10 minutes
-            if self.last_failure_time and datetime.now() - self.last_failure_time > timedelta(minutes=10):
-                self.geocoding_enabled = True
-                self.failure_count = 0
-                logger.info("Re-enabling geocoding after cooldown period")
-            else:
-                return f"Location ({latitude:.4f}, {longitude:.4f})"
-        
         try:
-            # Rate limiting - be nice to the geocoding service
-            time.sleep(0.1)
+            # Use the new multi-provider geocoding manager
+            geocoding_manager = get_geocoding_manager()
+            address = geocoding_manager.get_address_from_coordinates(latitude, longitude)
             
-            location = self.geocoder.reverse(f"{latitude}, {longitude}", timeout=5)
-            if location and location.address:
-                address = self._format_address(location.address)
-                # Cache successful geocoding result for 30 days
-                db.cache_address(latitude, longitude, address, cache_days=30)
-                # Reset failure count on success
-                self.failure_count = 0
-                return address
+            if address:
+                formatted_address = self._format_address(address)
+                
+                # Cache successful result in SQL database for 30 days
+                if use_cache:
+                    db.cache_address(latitude, longitude, formatted_address, cache_days=30)
+                
+                return formatted_address
             else:
+                # Fallback address when no geocoding providers succeed
                 fallback_address = f"Unknown Location ({latitude:.4f}, {longitude:.4f})"
-                # Cache fallback address for shorter period (7 days)
-                db.cache_address(latitude, longitude, fallback_address, cache_days=7)
+                if use_cache:
+                    db.cache_address(latitude, longitude, fallback_address, cache_days=7)
                 return fallback_address
                 
-        except (GeocoderTimedOut, GeocoderServiceError) as e:
-            self._handle_geocoding_failure()
-            logger.warning(f"Geocoding failed for {latitude}, {longitude}: {e}")
-            fallback_address = f"Location ({latitude:.4f}, {longitude:.4f})"
-            # Cache failure result for shorter period (1 day) to retry sooner
-            db.cache_address(latitude, longitude, fallback_address, cache_days=1)
-            return fallback_address
         except Exception as e:
-            self._handle_geocoding_failure()
-            logger.error(f"Unexpected geocoding error: {e}")
+            logger.error(f"Error in multi-provider geocoding: {e}")
             fallback_address = f"Error ({latitude:.4f}, {longitude:.4f})"
-            # Cache error result for very short period (6 hours) 
-            db.cache_address(latitude, longitude, fallback_address, cache_days=0.25)
+            if use_cache:
+                db.cache_address(latitude, longitude, fallback_address, cache_days=0.25)
             return fallback_address
-    
-    def _handle_geocoding_failure(self):
-        """Handle geocoding failures and temporarily disable if too many consecutive failures"""
-        self.failure_count += 1
-        self.last_failure_time = datetime.now()
-        
-        # Disable geocoding after 10 consecutive failures
-        if self.failure_count >= 10:
-            self.geocoding_enabled = False
-            logger.warning(f"Disabling geocoding temporarily due to {self.failure_count} consecutive failures. Will retry in 10 minutes.")
     
     def _format_address(self, raw_address: str) -> str:
         """Format and clean up address string"""
@@ -268,7 +238,17 @@ class LocationAnalytics:
         )
         
         if not locations:
-            return {"error": "No location data found"}
+            return {
+                "device_name": device_name,
+                "period_days": days,
+                "total_tracking_points": 0,
+                "daily_analytics": [],
+                "avg_daily_points": 0,
+                "avg_daily_distance": 0,
+                "weekly_top_locations": [],
+                "overall_top_locations": [],
+                "error": "No location data found"
+            }
         
         # Group by day
         daily_stats = defaultdict(list)
@@ -309,14 +289,161 @@ class LocationAnalytics:
         
         daily_analytics.sort(key=lambda x: x['date'], reverse=True)
         
+        # Get top visited locations for the period and overall
+        try:
+            weekly_top_locations = self.get_top_visited_locations(device_name, days=days, limit=10)
+        except Exception as e:
+            logger.error(f"Error getting weekly top locations: {e}")
+            weekly_top_locations = []
+        
+        try:
+            overall_top_locations = self.get_top_visited_locations(device_name, days=None, limit=10)
+        except Exception as e:
+            logger.error(f"Error getting overall top locations: {e}")
+            overall_top_locations = []
+        
         return {
             "device_name": device_name,
             "period_days": days,
             "total_tracking_points": len(locations),
             "daily_analytics": daily_analytics,
             "avg_daily_points": len(locations) / len(daily_stats) if daily_stats else 0,
-            "avg_daily_distance": sum(day['distance_km'] for day in daily_analytics) / len(daily_analytics) if daily_analytics else 0
+            "avg_daily_distance": sum(day['distance_km'] for day in daily_analytics) / len(daily_analytics) if daily_analytics else 0,
+            "weekly_top_locations": weekly_top_locations,
+            "overall_top_locations": overall_top_locations
         }
+    
+    def get_top_visited_locations(self, device_name: str, days: int = None, limit: int = 10) -> List[Dict]:
+        """Get top visited locations with time spent analysis"""
+        try:
+            # Determine date range
+            if days:
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=days)
+                locations = db.get_locations(
+                    start_time=start_date.isoformat(),
+                    end_time=end_date.isoformat(),
+                    device_name=device_name,
+                    limit=10000
+                )
+            else:
+                # Get all-time data
+                locations = db.get_locations(
+                    device_name=device_name,
+                    limit=10000
+                )
+            
+            if not locations:
+                return []
+            
+            # Group locations by address and calculate visit statistics
+            address_stats = defaultdict(lambda: {
+                'visit_count': 0,
+                'total_time_minutes': 0,
+                'coordinates': [],
+                'timestamps': [],
+                'first_visit': None,
+                'last_visit': None
+            })
+            
+            # Group by address using existing clustering logic
+            try:
+                address_groups = self.group_locations_by_address(locations)
+            except Exception as e:
+                logger.error(f"Error grouping locations by address: {e}")
+                return []
+            
+            for address, group_locations in address_groups.items():
+                if not group_locations:
+                    continue
+                    
+                # Sort by timestamp for time analysis
+                sorted_locs = sorted(group_locations, key=lambda x: x['timestamp'])
+                
+                # Calculate visit sessions (gaps > 30 minutes = new visit)
+                visit_sessions = []
+                current_session = [sorted_locs[0]]
+                
+                for i in range(1, len(sorted_locs)):
+                    prev_time = datetime.fromisoformat(sorted_locs[i-1]['timestamp'].replace('Z', '+00:00'))
+                    curr_time = datetime.fromisoformat(sorted_locs[i]['timestamp'].replace('Z', '+00:00'))
+                    
+                    # If gap is more than 30 minutes, start new session
+                    if (curr_time - prev_time).total_seconds() > 1800:  # 30 minutes
+                        visit_sessions.append(current_session)
+                        current_session = [sorted_locs[i]]
+                    else:
+                        current_session.append(sorted_locs[i])
+                
+                # Add the last session
+                if current_session:
+                    visit_sessions.append(current_session)
+                
+                # Calculate total time spent
+                total_time_minutes = 0
+                for session in visit_sessions:
+                    if len(session) > 1:
+                        start_time = datetime.fromisoformat(session[0]['timestamp'].replace('Z', '+00:00'))
+                        end_time = datetime.fromisoformat(session[-1]['timestamp'].replace('Z', '+00:00'))
+                        session_duration = (end_time - start_time).total_seconds() / 60
+                        # Cap individual session time at 8 hours to avoid outliers
+                        total_time_minutes += min(session_duration, 480)
+                    else:
+                        # Single point visits count as 5 minutes minimum
+                        total_time_minutes += 5
+                
+                # Get representative coordinates (center of cluster)
+                avg_lat = sum(float(loc['latitude']) for loc in group_locations) / len(group_locations)
+                avg_lng = sum(float(loc['longitude']) for loc in group_locations) / len(group_locations)
+                
+                address_stats[address] = {
+                    'visit_count': len(visit_sessions),
+                    'total_time_minutes': round(total_time_minutes, 1),
+                    'latitude': avg_lat,
+                    'longitude': avg_lng,
+                    'first_visit': sorted_locs[0]['timestamp'],
+                    'last_visit': sorted_locs[-1]['timestamp'],
+                    'total_points': len(group_locations)
+                }
+            
+            # Sort by visit count and then by time spent
+            top_locations = []
+            for address, stats in address_stats.items():
+                top_locations.append({
+                    'address': address,
+                    'visit_count': stats['visit_count'],
+                    'total_time_minutes': stats['total_time_minutes'],
+                    'total_time_hours': round(stats['total_time_minutes'] / 60, 1),
+                    'latitude': stats['latitude'],
+                    'longitude': stats['longitude'],
+                    'first_visit': stats['first_visit'],
+                    'last_visit': stats['last_visit'],
+                    'total_points': stats['total_points'],
+                    'avg_time_per_visit': round(stats['total_time_minutes'] / stats['visit_count'], 1) if stats['visit_count'] > 0 else 0
+                })
+            
+            # Sort by visit count (primary) and total time (secondary)
+            top_locations.sort(key=lambda x: (x['visit_count'], x['total_time_minutes']), reverse=True)
+            
+            return top_locations[:limit]
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"Error getting top visited locations: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            return []
+    
+    def get_geocoding_status(self) -> Dict:
+        """Get status of geocoding providers"""
+        try:
+            geocoding_manager = get_geocoding_manager()
+            return {
+                'provider_status': geocoding_manager.get_provider_status(),
+                'stats': geocoding_manager.get_stats()
+            }
+        except Exception as e:
+            logger.error(f"Error getting geocoding status: {e}")
+            return {'error': str(e)}
     
     def generate_heatmap_data(self, device_name: str = None, days: int = 30) -> List[Tuple[float, float, int]]:
         """Generate heatmap data for frequently visited areas"""
@@ -1502,7 +1629,6 @@ class LocationAnalytics:
             report['unique_locations'] = len(location_clusters)
             
             # Daily breakdown
-            from collections import defaultdict
             daily_stats = defaultdict(lambda: {
                 'date': '',
                 'locations': 0,

@@ -1370,24 +1370,60 @@ class Database:
             return False
     
     def get_all_devices_with_nicknames(self) -> List[Dict]:
-        """Get all devices with their nicknames"""
+        """Get all devices with nicknames - optimized for performance"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # Start with the simplest possible query first
+                logger.info("Attempting fast device query...")
                 cursor.execute("""
-                    SELECT DISTINCT l.device_name,
-                           d.nickname,
-                           COALESCE(d.nickname, l.device_name) as display_name,
-                           COUNT(l.id) as location_count,
-                           MAX(l.timestamp) as last_location
-                    FROM locations l
-                    LEFT JOIN devices d ON l.device_name = d.device_name
-                    GROUP BY l.device_name, d.nickname
-                    ORDER BY display_name
+                    SELECT device_name,
+                           NULL as nickname,
+                           device_name as display_name,
+                           0 as location_count,
+                           NULL as last_location
+                    FROM (
+                        SELECT DISTINCT device_name
+                        FROM locations
+                        ORDER BY device_name
+                        LIMIT 20
+                    ) devices
                 """)
-                return cursor.fetchall()
+                devices = cursor.fetchall()
+                
+                # If we have devices, try to get nicknames for them
+                if devices:
+                    # Check if devices table exists
+                    cursor.execute("SHOW TABLES LIKE 'devices'")
+                    devices_table_exists = cursor.fetchone() is not None
+                    
+                    if devices_table_exists:
+                        logger.info("Getting nicknames for devices...")
+                        # Get nicknames for the devices we found
+                        device_names = [d['device_name'] for d in devices]
+                        placeholders = ','.join(['%s'] * len(device_names))
+                        cursor.execute(f"""
+                            SELECT device_name, nickname
+                            FROM devices
+                            WHERE device_name IN ({placeholders})
+                        """, device_names)
+                        
+                        nicknames = {row['device_name']: row['nickname'] for row in cursor.fetchall()}
+                        
+                        # Update devices with nicknames
+                        for device in devices:
+                            device_name = device['device_name']
+                            if device_name in nicknames and nicknames[device_name]:
+                                device['nickname'] = nicknames[device_name]
+                                device['display_name'] = nicknames[device_name]
+                
+                logger.info(f"Successfully loaded {len(devices)} devices")
+                return devices
+                
         except Exception as e:
             logger.error(f"Failed to get devices with nicknames: {e}")
+            # Final fallback - return empty list rather than crash
             return []
     
     def get_device_display_name(self, device_name: str) -> str:

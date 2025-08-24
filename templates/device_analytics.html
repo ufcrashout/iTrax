@@ -21,6 +21,8 @@
         .btn-export { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border: none; border-radius: 10px; color: white; }
         .btn-export:hover { transform: translateY(-1px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); color: white; }
         .chart-container { height: 300px; }
+        .location-row:hover { background-color: #f8f9fa; transform: translateY(-1px); transition: all 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .location-row { transition: all 0.2s ease; }
         @media (max-width: 767.98px) { #map { height: 300px; } .stats-card { margin-bottom: 0.75rem; padding: 1rem; } .stats-number { font-size: 1.75rem; } .card { margin-bottom: 1rem; } .chart-container { height: 250px; } }
         @media (max-width: 575.98px) { .btn { padding: 0.625rem 1.25rem; font-size: 0.875rem; } .card-header h5, .card-header h6 { font-size: 1rem; } .form-control, .form-select, .btn { min-height: 44px; } .chart-container { height: 200px; } }
     </style>
@@ -187,6 +189,149 @@
                 </div>
             </div>
         </div>
+
+        <!-- Top Visited Locations -->
+        <div class="row mt-4">
+            <div class="col-lg-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-trophy me-2"></i>Top 10 - This Week
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            {% if summary_stats.weekly_top_locations %}
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th width="5%">#</th>
+                                        <th width="40%">Location</th>
+                                        <th width="20%">Visits</th>
+                                        <th width="20%">Time</th>
+                                        <th width="15%">Avg/Visit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for location in summary_stats.weekly_top_locations %}
+                                    <tr class="location-row" style="cursor: pointer;" 
+                                        onclick="showLocationOnMap({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}')">
+                                        <td class="text-center">
+                                            <span class="badge bg-primary">{{ loop.index }}</span>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold text-truncate" style="max-width: 200px;" title="{{ location.address }}">
+                                                <i class="fas fa-map-marker-alt me-1 text-primary"></i>
+                                                {{ location.address }}
+                                            </div>
+                                            <small class="text-muted">{{ location.total_points }} GPS points</small>
+                                        </td>
+                                        <td>
+                                            <span class="visit-badge">{{ location.visit_count }}</span>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold">
+                                                {% if location.total_time_hours >= 1 %}
+                                                    {{ location.total_time_hours }}h
+                                                {% else %}
+                                                    {{ location.total_time_minutes|round|int }}m
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {% if location.avg_time_per_visit >= 60 %}
+                                                    {{ (location.avg_time_per_visit/60)|round(1) }}h
+                                                {% else %}
+                                                    {{ location.avg_time_per_visit|round|int }}m
+                                                {% endif %}
+                                            </small>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <div class="text-center py-4 text-muted">
+                                <i class="fas fa-trophy fa-3x mb-3 opacity-25"></i>
+                                <p>No location data for this week</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-star me-2"></i>Top 10 - All Time
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            {% if summary_stats.overall_top_locations %}
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th width="5%">#</th>
+                                        <th width="40%">Location</th>
+                                        <th width="20%">Visits</th>
+                                        <th width="20%">Time</th>
+                                        <th width="15%">Avg/Visit</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for location in summary_stats.overall_top_locations %}
+                                    <tr class="location-row" style="cursor: pointer;" 
+                                        onclick="showLocationOnMap({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}')">
+                                        <td class="text-center">
+                                            <span class="badge bg-success">{{ loop.index }}</span>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold text-truncate" style="max-width: 200px;" title="{{ location.address }}">
+                                                <i class="fas fa-map-marker-alt me-1 text-success"></i>
+                                                {{ location.address }}
+                                            </div>
+                                            <small class="text-muted">{{ location.total_points }} GPS points</small>
+                                        </td>
+                                        <td>
+                                            <span class="visit-badge">{{ location.visit_count }}</span>
+                                        </td>
+                                        <td>
+                                            <div class="fw-bold">
+                                                {% if location.total_time_hours >= 1 %}
+                                                    {{ location.total_time_hours }}h
+                                                {% else %}
+                                                    {{ location.total_time_minutes|round|int }}m
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <small class="text-muted">
+                                                {% if location.avg_time_per_visit >= 60 %}
+                                                    {{ (location.avg_time_per_visit/60)|round(1) }}h
+                                                {% else %}
+                                                    {{ location.avg_time_per_visit|round|int }}m
+                                                {% endif %}
+                                            </small>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <div class="text-center py-4 text-muted">
+                                <i class="fas fa-star fa-3x mb-3 opacity-25"></i>
+                                <p>No overall location data available</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 {% endblock %}
 
 {% block extra_js %}
@@ -271,9 +416,12 @@
 
         // Weekly Activity Chart
         var summaryData = {{ summary_stats | tojson }};
+        console.log('Summary data:', summaryData); // Debug log
         
-        if (summaryData.daily_analytics && summaryData.daily_analytics.length > 0) {
-            var ctx = document.getElementById('activityChart').getContext('2d');
+        var ctx = document.getElementById('activityChart').getContext('2d');
+        
+        if (summaryData && !summaryData.error && summaryData.daily_analytics && summaryData.daily_analytics.length > 0) {
+            console.log('Rendering chart with data:', summaryData.daily_analytics); // Debug log
             var chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -332,6 +480,71 @@
                     }
                 }
             });
+        } else {
+            console.log('No data available, showing empty chart message'); // Debug log
+            // Show empty state message
+            var chartContainer = ctx.canvas.parentElement;
+            chartContainer.innerHTML = `
+                <div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
+                    <i class="fas fa-chart-bar fa-3x mb-3 opacity-25"></i>
+                    <h5>No Activity Data</h5>
+                    <p class="mb-0">No location data found for the past 7 days</p>
+                    <small class="mt-2">Data will appear here when the device has been tracked for multiple days</small>
+                </div>
+            `;
         }
+        
+        // Function to show a specific location on the map when clicked from top locations
+        function showLocationOnMap(lat, lng, address) {
+            // Center the map on the location
+            map.setView([lat, lng], 16);
+            
+            // Create a special highlight marker
+            var highlightIcon = L.divIcon({
+                className: 'highlight-marker',
+                html: `<div style="background-color: #ff4757; width: 30px; height: 30px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(255, 71, 87, 0.6); animation: pulse 2s infinite;"></div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+            
+            // Remove any existing highlight markers
+            map.eachLayer(function (layer) {
+                if (layer.options && layer.options.className === 'highlight-marker') {
+                    map.removeLayer(layer);
+                }
+            });
+            
+            // Add the highlight marker
+            var highlightMarker = L.marker([lat, lng], { 
+                icon: highlightIcon,
+                className: 'highlight-marker'
+            }).addTo(map);
+            
+            // Show popup with location info
+            highlightMarker.bindPopup(`
+                <div style="max-width: 200px;">
+                    <h6><i class="fas fa-map-marker-alt me-1 text-danger"></i>Selected Location</h6>
+                    <hr class="my-2">
+                    <p class="mb-1">${address}</p>
+                    <small class="text-muted">Click on other markers for more details</small>
+                </div>
+            `).openPopup();
+            
+            // Remove highlight after 5 seconds
+            setTimeout(() => {
+                map.removeLayer(highlightMarker);
+            }, 5000);
+        }
+        
+        // Add pulse animation for highlight marker
+        var style = document.createElement('style');
+        style.textContent = `
+            @keyframes pulse {
+                0% { transform: scale(1); opacity: 1; }
+                50% { transform: scale(1.2); opacity: 0.7; }
+                100% { transform: scale(1); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
 {% endblock %}

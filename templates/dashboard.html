@@ -464,7 +464,7 @@
                             N/A
                         {% endif %}
                     </div>
-                    <div class="stats-label">Last Update (CST)</div>
+                    <div class="stats-label">Last Update</div>
                 </div>
             </div>
             <div class="col-sm-6 col-lg-3">
@@ -491,7 +491,7 @@
                             </label>
                             <input type="date" class="form-control" id="date" name="date" 
                                    value="{{ selected_date or '' }}"
-                                   max="{{ (moment().format('YYYY-MM-DD')) if moment else '' }}">
+                                   max="{{ get_cst_now().strftime('%Y-%m-%d') }}">
                             <div class="form-text">Shows 24-hour movement from 00:00 to 23:59</div>
                         </div>
                         <div class="col-md-4 mb-3 mb-md-0">
@@ -687,15 +687,27 @@
             }
         }
 
-        // Ensure incoming timestamps are parsed as UTC (append 'Z' if missing)
+        // Parse timestamps with proper timezone handling
         function parseUtcTimestamp(ts) {
             if (!ts) return new Date(NaN);
-            // If the string already contains timezone info (+/- or Z), use as is
-            if (/[zZ]|[\+\-]\d{2}:?\d{2}$/.test(ts)) {
+            
+            try {
+                // If already contains timezone info, use as is
+                if (/[zZ]|[\+\-]\d{2}:?\d{2}$/.test(ts)) {
+                    return new Date(ts);
+                }
+                
+                // If no timezone specified, treat as UTC
+                if (ts.includes('T') && !ts.includes('Z')) {
+                    return new Date(ts + 'Z');
+                }
+                
+                // Fallback to direct parsing
                 return new Date(ts);
+            } catch (error) {
+                console.error('Error parsing timestamp:', ts, error);
+                return new Date(NaN);
             }
-            // Append Z to indicate UTC
-            return new Date(ts + 'Z');
         }
 
         // Performance optimization - use LayerGroup for better performance with many markers
@@ -1323,8 +1335,8 @@
         
         function clusterLocationsByCoordinates(locations) {
             const clusters = [];
-            const CLUSTER_THRESHOLD = 0.003; // ~300m clustering radius
-            const JITTER_THRESHOLD = 0.0005; // ~55m jitter smoothing
+            const CLUSTER_THRESHOLD = 0.002; // ~200m clustering radius (reduced for better visit detection)
+            const JITTER_THRESHOLD = 0.0003; // ~33m jitter smoothing (reduced for better precision)
             
             for (const loc of locations) {
                 let assignedCluster = null;
@@ -1365,7 +1377,7 @@
         }
         
         function findClusterForLocation(location, clusters) {
-            const CLUSTER_THRESHOLD = 0.003;
+            const CLUSTER_THRESHOLD = 0.002;
             
             for (const cluster of clusters) {
                 const distance = calculateDistance(
@@ -1386,8 +1398,8 @@
             const activities = [];
             const durationMinutes = (segment.endTime - segment.startTime) / (1000 * 60);
             
-            // If segment is at a location for >= 15 minutes, it's a visit
-            if (durationMinutes >= 15) {
+            // If segment is at a location for >= 5 minutes, it's a visit (reduced from 15 minutes)
+            if (durationMinutes >= 5) {
                 activities.push({
                     type: 'visit',
                     latitude: segment.clusterCenter.lat,

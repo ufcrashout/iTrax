@@ -19,6 +19,16 @@ class Config:
         os.environ.get('ADMIN_USERNAME', 'admin'): os.environ.get('ADMIN_PASSWORD', 'change_me')
     }
     
+    # Geocoding API Configuration (all optional, free providers used by default)
+    GOOGLE_GEOCODING_API_KEY = os.environ.get('GOOGLE_GEOCODING_API_KEY', '')
+    MAPBOX_API_KEY = os.environ.get('MAPBOX_API_KEY', '')
+    HERE_API_KEY = os.environ.get('HERE_API_KEY', '')
+    
+    # Geocoding Settings
+    GEOCODING_CACHE_HOURS = int(os.environ.get('GEOCODING_CACHE_HOURS', 24))
+    GEOCODING_CACHE_SIZE = int(os.environ.get('GEOCODING_CACHE_SIZE', 1000))
+    GEOCODING_MAX_PROVIDERS = int(os.environ.get('GEOCODING_MAX_PROVIDERS', 3))
+    
     # File Paths
     LOCATION_FILE = "iphone_locations_history.json"  # For migration purposes
     SESSION_FILE = "icloud_session.cookies"  # For migration purposes
