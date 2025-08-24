@@ -567,7 +567,7 @@ def health_check():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         db.log_message("ERROR", f"Health check failed: {e}", "webapp")
-        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+        return jsonify({'status': 'unhealthy', 'error': 'A server error occurred'}), 500
 
 @app.route('/api/cache-stats')
 @login_required
