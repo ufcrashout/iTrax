@@ -1028,18 +1028,42 @@ def api_geofence_events():
 def notifications_overview():
     """Notifications management page"""
     try:
+        # Initialize with empty defaults to prevent template errors
+        notification_rules = []
+        recent_notifications = []
+        geofences = []
+        available_devices = []
+        
         # Get notification rules
-        notification_rules = analytics.get_notification_rules()
+        try:
+            logger.info("Getting notification rules...")
+            notification_rules = analytics.get_notification_rules()
+            logger.info(f"Retrieved {len(notification_rules)} notification rules")
+        except Exception as e:
+            logger.error(f"Error getting notification rules: {e}")
+            notification_rules = []
         
         # Get recent notifications
-        recent_notifications = analytics.get_recent_notifications(limit=30)
+        try:
+            logger.info("Getting recent notifications...")
+            recent_notifications = analytics.get_recent_notifications(limit=10)  # Reduced limit
+            logger.info(f"Retrieved {len(recent_notifications)} recent notifications")
+        except Exception as e:
+            logger.error(f"Error getting recent notifications: {e}")
+            recent_notifications = []  # Ensure it's still a list for template
         
         # Get geofences for dropdown
-        geofences = analytics.get_geofences()
+        try:
+            logger.info("Getting geofences...")
+            geofences = analytics.get_geofences()
+            logger.info(f"Retrieved {len(geofences)} geofences")
+        except Exception as e:
+            logger.error(f"Error getting geofences: {e}")
+            geofences = []
         
         # Get available devices for filter dropdown
-        available_devices = []
         try:
+            logger.info("Getting available devices...")
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
@@ -1049,10 +1073,13 @@ def notifications_overview():
                     LEFT JOIN devices d ON l.device_name = d.device_name
                     WHERE l.device_name IS NOT NULL AND l.device_name != ''
                     ORDER BY display_name
+                    LIMIT 100
                 ''')
                 available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
+                logger.info(f"Retrieved {len(available_devices)} available devices")
         except Exception as e:
             logger.error(f"Error getting device list for notifications: {e}")
+            available_devices = []
         
         return render_template('notifications.html',
                              notification_rules=notification_rules,
@@ -1408,9 +1435,9 @@ def travel_reports():
                 cursor = conn.cursor()
                 cursor.execute('''
                     SELECT DISTINCT l.device_name,
-                           COALESCE(dn.nickname, l.device_name) as display_name
+                           COALESCE(d.nickname, l.device_name) as display_name
                     FROM locations l
-                    LEFT JOIN device_nicknames dn ON l.device_name = dn.device_name
+                    LEFT JOIN devices d ON l.device_name = d.device_name
                     ORDER BY display_name
                 ''')
                 rows = cursor.fetchall()
@@ -2334,7 +2361,7 @@ def device_management():
         logger.info("Loading device management page...")
         devices = db.get_all_devices_with_nicknames()
         logger.info(f"Device management loaded with {len(devices)} devices")
-        return render_template('device_management.html', devices=devices)
+        return render_template('device_management.html', devices=devices, csrf_token=generate_csrf())
     except Exception as e:
         logger.error(f"Error loading device management page: {e}")
         flash('An error occurred while loading device management.', 'error')
