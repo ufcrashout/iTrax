@@ -153,6 +153,26 @@ iTrax is a powerful, enterprise-grade web application that provides comprehensiv
 - **Audit logging** - all admin actions are logged
 - **Command-line tools** for server-side user management
 
+### ⚙️ User Settings & Preferences
+- **Comprehensive settings page** for user customization
+- **Timezone configuration** with live preview and validation
+- **Date/time format preferences** (12/24-hour, regional formats)
+- **Interface theme selection** (light/dark mode support)
+- **Auto-refresh interval control** for dashboard updates
+- **Map default zoom level** customization
+- **Real-time settings preview** before saving changes
+- **Form validation** and error handling for all preferences
+
+### 📱 Device Management System
+- **Device nickname management** for easier identification
+- **Visual device cards** with statistics and status indicators
+- **Bulk device operations** with intuitive interface
+- **Device activity tracking** with last seen timestamps
+- **Location count statistics** per device
+- **Easy nickname editing** with inline forms
+- **Device identification** using original names and custom nicknames
+- **Responsive device grid** for mobile and desktop viewing
+
 ---
 
 ## 🛠️ Technical Architecture
@@ -160,7 +180,7 @@ iTrax is a powerful, enterprise-grade web application that provides comprehensiv
 ### 📊 Database System
 - **MySQL/MariaDB database** for enterprise-grade reliable data storage
 - **Automatic migrations** from legacy JSON data
-- **Built-in backup system** with configurable retention
+- **Automated backup system** with 3x daily scheduled backups and configurable retention
 - **Database optimization tools** for performance
 - **Comprehensive logging** with structured data
 - **Advanced indexing** for high-performance queries
@@ -175,6 +195,25 @@ iTrax is a powerful, enterprise-grade web application that provides comprehensiv
 - **Map performance enhancements** with marker batching and layer grouping
 - **3-page address prefetching** for GPS logs with intelligent caching
 - **Cache statistics endpoint** for monitoring and debugging
+- **Multi-provider geocoding system** with automatic failover and rate limiting
+
+### 🌍 Advanced Geocoding System
+- **Multi-provider geocoding** with automatic failover between providers
+- **Provider health monitoring** with rate limit management
+- **Intelligent caching** to reduce API calls and improve performance
+- **Configurable retry strategies** for robust address resolution
+- **Free and paid provider support** (OpenStreetMap, Google Maps, MapBox, Here, ArcGIS)
+- **Provider statistics** and performance monitoring
+- **Automatic rate limiting** per provider to prevent API abuse
+
+### 🕐 Timezone Management System
+- **User-configurable timezone settings** for accurate time display
+- **Automatic timezone conversion** from UTC to user's preferred timezone
+- **Multiple date format options** (12/24-hour, US/European formats)
+- **Real-time timezone preview** in settings interface
+- **Daylight saving time handling** with pytz integration
+- **Common timezone shortcuts** for quick selection
+- **Time formatting utilities** throughout the application
 
 ### 🔧 API Endpoints
 - **RESTful API design** with consistent response formats
@@ -233,10 +272,30 @@ PUT  /api/users/<username>/admin   - Update admin status
 PUT  /api/users/<username>/active  - Enable/disable user
 PUT  /api/users/<username>/password - Change user password
 DEL  /api/users/<username> - Delete user
+
+# Device Management
+GET  /api/devices/<device>/nickname    - Get device nickname
+PUT  /api/devices/<device>/nickname    - Set/update device nickname
+DEL  /api/devices/<device>/nickname    - Remove device nickname
+
+# User Settings
+GET  /api/settings         - Get user preferences and settings
+POST /api/settings         - Update user preferences and settings
+GET  /api/settings/timezones - Get available timezone list
+
+# Geocoding Management
+GET  /api/geocoding/stats  - Geocoding provider statistics
+POST /api/geocoding/reset  - Reset geocoding provider status
+DEL  /api/geocoding/cache  - Clear geocoding cache
+
+# Backup Management (Admin Only)
+GET  /api/backup/info      - Get backup system information and statistics
+POST /api/backup/create    - Force create a backup immediately
 ```
 
 ### 🔄 Background Services
 - **Location tracker service** with automatic recovery
+- **Scheduled backup service** with 3x daily automated backups
 - **Database cleanup service** for old data management
 - **Session management** with automatic renewal
 - **Geofence monitoring** with real-time violation detection (MySQL optimized)
@@ -298,6 +357,9 @@ DEL  /api/users/<username> - Delete user
    DB_NAME=itrax
    DATABASE_CLEANUP_DAYS=30
    DATABASE_BACKUP_RETENTION=5
+   DATABASE_BACKUP_RETENTION_DAYS=14
+   BACKUP_DIRECTORY=backups
+   BACKUP_SCHEDULE_TIMES=06:00,14:00,22:00
    
    # Tracking Configuration
    TRACKING_INTERVAL=600
@@ -372,6 +434,7 @@ python database_tools.py stats      # View database statistics
 python database_tools.py locations --limit 20  # View recent locations
 python database_tools.py cleanup --days 30     # Clean up old data
 python database_tools.py backup     # Create database backup
+python database_tools.py backup-info # View backup system information
 python database_tools.py logs --level INFO --limit 50  # View logs
 python database_tools.py export --format json  # Export data (JSON/CSV)
 python database_tools.py optimize   # Optimize database performance
@@ -430,7 +493,10 @@ The database includes optimized indexes for high-performance queries:
 | `TRACKING_INTERVAL` | Location check frequency | `600` | `300` (5 minutes) |
 | `MAX_DELAY` | Max rate limit delay | `3600` | `1800` (30 minutes) |
 | `DATABASE_CLEANUP_DAYS` | Data retention period | `30` | `90` |
-| `DATABASE_BACKUP_RETENTION` | Backup file count | `5` | `10` |
+| `DATABASE_BACKUP_RETENTION` | Legacy backup file count | `5` | `10` |
+| `DATABASE_BACKUP_RETENTION_DAYS` | Backup retention in days | `14` | `30` |
+| `BACKUP_DIRECTORY` | Backup storage directory | `backups` | `backups` |
+| `BACKUP_SCHEDULE_TIMES` | Backup schedule times | `06:00,14:00,22:00` | `02:00,10:00,18:00` |
 | `DB_HOST` | MySQL host | `localhost` | `mysql.example.com` |
 | `DB_PORT` | MySQL port | `3306` | `3306` |
 | `DB_USER` | MySQL user | `root` | `itrax_user` |
@@ -699,6 +765,8 @@ iTrax/
 ├── 📄 start.py               # Application launcher
 ├── 📄 config.py              # Configuration management
 ├── 📄 gps_maintenance.py     # GPS data maintenance
+├── 📄 timezone_utils.py      # Timezone management utilities
+├── 📄 geocoding_manager.py   # Multi-provider geocoding system
 ├── 📄 requirements.txt       # Python dependencies
 ├── 📄 env_example.txt        # Environment template
 ├── 📄 icloud-tracker.service # Systemd service file
@@ -716,6 +784,8 @@ iTrax/
 │   ├── 🎨 gps_logs.html      # GPS log viewer with 3-page prefetching
 │   ├── 🎨 device_analytics.html # Device-specific analytics
 │   ├── 🎨 user_management.html # User management (admin)
+│   ├── 🎨 device_management.html # Device nickname management
+│   ├── 🎨 settings.html      # User settings and preferences
 │   ├── 🎨 login.html         # Login page
 │   ├── 🎨 404.html           # Error page
 │   └── 🎨 500.html           # Server error page
@@ -736,8 +806,10 @@ iTrax/
 - **Authentication**: Flask-Login with session management
 - **Security**: Flask-WTF for CSRF protection
 - **Rate Limiting**: Flask-Limiter with Redis support
-- **Geocoding**: Geopy with Nominatim and intelligent caching
+- **Geocoding**: Multi-provider geocoding (Nominatim, Google, MapBox, Here, ArcGIS)
+- **Timezone**: PyTZ with comprehensive timezone support
 - **Notifications**: SMTP, Webhooks with real-time updates
+- **CI/CD**: GitHub Actions for automated testing and code quality
 
 ---
 

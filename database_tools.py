@@ -112,18 +112,61 @@ def cleanup_old_data(days=30):
         print(f"❌ Error during cleanup: {e}")
 
 def backup_database():
-    """Create a database backup"""
+    """Create a database backup using the new backup system"""
     print("💾 Creating database backup...")
     
     try:
+        from backup_scheduler import create_backup
+        backup_path = create_backup()
+        
+        if backup_path:
+            print(f"✅ Database backed up to: {backup_path}")
+            
+            # Show backup file size
+            import os
+            if os.path.exists(backup_path):
+                size_mb = os.path.getsize(backup_path) / (1024 * 1024)
+                print(f"📊 Backup size: {size_mb:.2f} MB")
+        else:
+            print("❌ Backup failed")
+    except ImportError:
+        # Fallback to old method if backup_scheduler not available
         backup_path = db.backup_database()
         if backup_path:
             print(f"✅ Database backed up to: {backup_path}")
         else:
             print("❌ Backup failed")
-            
     except Exception as e:
         print(f"❌ Error creating backup: {e}")
+        
+def backup_info():
+    """Show backup system information"""
+    print("📊 Backup System Information")
+    print("=" * 50)
+    
+    try:
+        from backup_scheduler import get_backup_info
+        info = get_backup_info()
+        
+        print(f"📁 Backup Directory: {info['backup_dir']}")
+        print(f"📦 Total Backups: {info['total_count']}")
+        print(f"💾 Total Size: {info['total_size_mb']} MB")
+        print(f"⏰ Retention: {info['retention_days']} days")
+        print()
+        
+        if info['backups']:
+            print("Recent Backups:")
+            print("-" * 50)
+            for backup in info['backups'][:10]:  # Show last 10
+                age = f"{backup['age_days']} days ago" if backup['age_days'] > 0 else "today"
+                print(f"  {backup['filename']} - {backup['size_mb']} MB ({age})")
+        else:
+            print("No backups found")
+            
+    except ImportError:
+        print("❌ New backup system not available")
+    except Exception as e:
+        print(f"❌ Error getting backup info: {e}")
 
 def show_logs(level="INFO", limit=20):
     """Show recent logs"""
@@ -136,9 +179,9 @@ def show_logs(level="INFO", limit=20):
             cursor.execute('''
                 SELECT level, message, timestamp, source
                 FROM logs
-                WHERE level = ?
+                WHERE level = %s
                 ORDER BY timestamp DESC
-                LIMIT ?
+                LIMIT %s
             ''', (level, limit))
             
             logs = cursor.fetchall()
@@ -498,7 +541,7 @@ def revoke_admin(username=None, interactive=True):
 def main():
     parser = argparse.ArgumentParser(description='iTrax Database Management Tools')
     parser.add_argument('command', choices=[
-        'stats', 'devices', 'locations', 'cleanup', 'backup', 'logs', 'export', 'optimize',
+        'stats', 'devices', 'locations', 'cleanup', 'backup', 'backup-info', 'logs', 'export', 'optimize',
         'create-user', 'list-users', 'delete-user', 'change-password', 'promote-admin', 'revoke-admin'
     ], help='Command to execute')
     
@@ -525,6 +568,8 @@ def main():
         cleanup_old_data(args.days)
     elif args.command == 'backup':
         backup_database()
+    elif args.command == 'backup-info':
+        backup_info()
     elif args.command == 'logs':
         show_logs(args.level, args.limit)
     elif args.command == 'export':

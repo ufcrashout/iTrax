@@ -876,8 +876,12 @@ class Database:
     def backup_database(self, backup_path: str = None):
         """Create a backup of the database using mysqldump"""
         if not backup_path:
+            # Create backups directory if it doesn't exist
+            import os
+            os.makedirs("backups", exist_ok=True)
+            
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_path = f"icloud_tracker_backup_{timestamp}.sql"
+            backup_path = f"backups/itrax_backup_{timestamp}.sql"
         
         try:
             import subprocess

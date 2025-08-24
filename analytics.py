@@ -955,14 +955,14 @@ class LocationAnalytics:
                 params = []
                 
                 if device_name:
-                    query += ' AND ge.device_name = ?'
+                    query += ' AND ge.device_name = %s'
                     params.append(device_name)
                 
                 if geofence_id:
-                    query += ' AND ge.geofence_id = ?'
+                    query += ' AND ge.geofence_id = %s'
                     params.append(geofence_id)
                 
-                query += ' ORDER BY ge.timestamp DESC LIMIT ?'
+                query += ' ORDER BY ge.timestamp DESC LIMIT %s'
                 params.append(limit)
                 
                 cursor.execute(query, params)
@@ -1190,7 +1190,7 @@ class LocationAnalytics:
                     LEFT JOIN notification_rules nr ON sn.rule_id = nr.id
                     LEFT JOIN geofences g ON sn.geofence_id = g.id
                     ORDER BY sn.timestamp DESC
-                    LIMIT ?
+                    LIMIT %s
                 ''', (limit,))
                 
                 notifications = []
@@ -1267,7 +1267,7 @@ class LocationAnalytics:
                     conditions.append('is_active = 1')
                 
                 if category:
-                    conditions.append('category = ?')
+                    conditions.append('category = %s')
                     params.append(category)
                 
                 if conditions:
@@ -1324,15 +1324,15 @@ class LocationAnalytics:
             '''
             
             if device_name:
-                location_conditions.append('l.device_name = ?')
+                location_conditions.append('l.device_name = %s')
                 location_params.append(device_name)
             
             if start_date:
-                location_conditions.append('l.timestamp >= ?')
+                location_conditions.append('l.timestamp >= %s')
                 location_params.append(start_date)
             
             if end_date:
-                location_conditions.append('l.timestamp <= ?')
+                location_conditions.append('l.timestamp <= %s')
                 location_params.append(end_date)
             
             # Add proximity search if center point provided
@@ -1342,8 +1342,8 @@ class LocationAnalytics:
                 lng_range = radius_km / (111.0 * abs(center_lat / 90.0) + 0.1)  # Adjust for longitude
                 
                 location_conditions.extend([
-                    'l.latitude BETWEEN ? AND ?',
-                    'l.longitude BETWEEN ? AND ?'
+                    'l.latitude BETWEEN %s AND %s',
+                    'l.longitude BETWEEN %s AND %s'
                 ])
                 location_params.extend([
                     center_lat - lat_range, center_lat + lat_range,
@@ -1487,27 +1487,27 @@ class LocationAnalytics:
                     cursor = conn.cursor()
                     
                     query = '''
-                        SELECT l.*, d.device_type, d.is_active
-                        FROM locations l
-                        LEFT JOIN devices d ON l.device_id = d.id
+                        SELECT id, device_name, latitude, longitude, timestamp, accuracy, 
+                               address, created_at
+                        FROM locations
                         WHERE 1=1
                     '''
                     params = []
                     
                     # Use date() function to handle timezone-aware timestamps
                     if start_date:
-                        query += ' AND date(l.timestamp) >= date(?)'
+                        query += ' AND date(timestamp) >= date(%s)'
                         params.append(start_date)
                     
                     if end_date:
-                        query += ' AND date(l.timestamp) <= date(?)'
+                        query += ' AND date(timestamp) <= date(%s)'
                         params.append(end_date)
                     
                     if device_name:
-                        query += ' AND l.device_name = ?'
+                        query += ' AND device_name = %s'
                         params.append(device_name)
                     
-                    query += ' ORDER BY l.timestamp ASC LIMIT 5000'
+                    query += ' ORDER BY timestamp ASC LIMIT 5000'
                     
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
@@ -1518,6 +1518,7 @@ class LocationAnalytics:
                 locations = []
             
             if not locations:
+                logger.warning(f"No location data found for travel report. Filters: device={device_name}, start={start_date}, end={end_date}")
                 return report
             
             # Calculate basic statistics
@@ -1553,12 +1554,25 @@ class LocationAnalytics:
                     prev_loc = device_locs[i-1]
                     curr_loc = device_locs[i]
                     
-                    # Calculate distance using simple formula (convert to miles)
-                    lat_diff = curr_loc['latitude'] - prev_loc['latitude']
-                    lng_diff = curr_loc['longitude'] - prev_loc['longitude']
-                    distance_km = ((lat_diff ** 2 + lng_diff ** 2) ** 0.5) * 111  # Rough km conversion
-                    distance_miles = distance_km * 0.621371  # Convert km to miles
-                    device_distance += distance_miles
+                    # Calculate distance using haversine formula for better accuracy
+                    import math
+                    
+                    lat1, lon1 = math.radians(prev_loc['latitude']), math.radians(prev_loc['longitude'])
+                    lat2, lon2 = math.radians(curr_loc['latitude']), math.radians(curr_loc['longitude'])
+                    
+                    dlat = lat2 - lat1
+                    dlon = lon2 - lon1
+                    
+                    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+                    c = 2 * math.asin(math.sqrt(a))
+                    
+                    # Earth's radius in miles
+                    r = 3956
+                    distance_miles = c * r
+                    
+                    # Only count reasonable movements (less than 500 miles between consecutive points)
+                    if distance_miles < 500:
+                        device_distance += distance_miles
                 
                 device_distances[device] = round(device_distance, 2)
                 total_distance += device_distance
@@ -1654,8 +1668,8 @@ class LocationAnalytics:
             patterns = {
                 'most_active_day': max(daily_breakdown, key=lambda x: x['locations']) if daily_breakdown else None,
                 'least_active_day': min(daily_breakdown, key=lambda x: x['locations']) if daily_breakdown else None,
-                'average_daily_locations': sum(d['locations'] for d in daily_breakdown) / len(daily_breakdown) if daily_breakdown else 0,
-                'travel_frequency': 'High' if total_distance > 62 else 'Medium' if total_distance > 31 else 'Low'  # 100km = 62mi, 50km = 31mi
+                'average_daily_locations': round(sum(d['locations'] for d in daily_breakdown) / len(daily_breakdown), 1) if daily_breakdown else 0,
+                'travel_frequency': 'High' if total_distance > 100 else 'Medium' if total_distance > 25 else 'Low'
             }
             
             report['travel_patterns'] = patterns

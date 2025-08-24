@@ -47,6 +47,9 @@ class Config:
     DATABASE_NAME = os.environ.get('DB_NAME', 'icloud_tracker')
     DATABASE_CLEANUP_DAYS = int(os.environ.get('DATABASE_CLEANUP_DAYS', 30))
     DATABASE_BACKUP_RETENTION = int(os.environ.get('DATABASE_BACKUP_RETENTION', 5))
+    DATABASE_BACKUP_RETENTION_DAYS = int(os.environ.get('DATABASE_BACKUP_RETENTION_DAYS', 14))
+    BACKUP_DIRECTORY = os.environ.get('BACKUP_DIRECTORY', 'backups')
+    BACKUP_SCHEDULE_TIMES = os.environ.get('BACKUP_SCHEDULE_TIMES', '06:00,14:00,22:00').split(',')
     
     # Flask-Login Configuration
     REMEMBER_COOKIE_DURATION = timedelta(days=30)

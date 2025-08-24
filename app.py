@@ -1407,11 +1407,14 @@ def travel_reports():
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT DISTINCT device_name 
-                    FROM locations 
-                    ORDER BY device_name
+                    SELECT DISTINCT l.device_name,
+                           COALESCE(dn.nickname, l.device_name) as display_name
+                    FROM locations l
+                    LEFT JOIN device_nicknames dn ON l.device_name = dn.device_name
+                    ORDER BY display_name
                 ''')
-                available_devices = [row[0] for row in cursor.fetchall()]
+                rows = cursor.fetchall()
+                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in rows]
         except Exception as e:
             logger.error(f"Error getting device list for reports: {e}")
         
@@ -1423,11 +1426,17 @@ def travel_reports():
         report_data = None
         if device_filter or start_date or end_date:
             # Generate report
-            report_data = analytics.generate_travel_report(
-                device_name=device_filter,
-                start_date=start_date,
-                end_date=end_date
-            )
+            logger.info(f"Generating travel report for device='{device_filter}', start_date='{start_date}', end_date='{end_date}'")
+            try:
+                report_data = analytics.generate_travel_report(
+                    device_name=device_filter,
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                logger.info(f"Travel report generated successfully with {report_data.get('summary', {}).get('total_locations', 0)} locations")
+            except Exception as e:
+                logger.error(f"Error generating travel report: {e}")
+                flash(f'Error generating travel report: {str(e)}', 'error')
         
         return render_template('reports.html',
                              available_devices=available_devices,
@@ -2364,6 +2373,63 @@ def api_address_cache_stats():
         return jsonify({
             'success': False,
             'error': 'Failed to get cache statistics'
+        }), 500
+
+@app.route('/api/backup/info')
+@login_required
+@admin_required
+def api_backup_info():
+    """Get backup system information"""
+    try:
+        from backup_scheduler import get_backup_info
+        info = get_backup_info()
+        return jsonify({
+            'success': True,
+            'backup_info': info
+        })
+    except ImportError:
+        return jsonify({
+            'success': False,
+            'error': 'Backup scheduler not available'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error getting backup info: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to get backup information'
+        }), 500
+
+@app.route('/api/backup/create', methods=['POST'])
+@login_required
+@admin_required
+def api_create_backup():
+    """Force create a backup"""
+    try:
+        from backup_scheduler import create_backup
+        backup_path = create_backup()
+        
+        if backup_path:
+            return jsonify({
+                'success': True,
+                'message': 'Backup created successfully',
+                'backup_path': backup_path
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to create backup'
+            }), 500
+            
+    except ImportError:
+        return jsonify({
+            'success': False,
+            'error': 'Backup scheduler not available'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error creating backup: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to create backup'
         }), 500
 
 # Automatic cache cleanup - run at application startup and periodically

@@ -16,4 +16,18 @@ DB_NAME=icloud_tracker
 
 # Tracking Configuration (optional)
 TRACKING_INTERVAL=600
-MAX_DELAY=3600 
+MAX_DELAY=3600
+
+# Backup Configuration (optional)
+DATABASE_BACKUP_RETENTION_DAYS=14
+BACKUP_DIRECTORY=backups
+BACKUP_SCHEDULE_TIMES=06:00,14:00,22:00
+
+# Geocoding API Keys (optional - uses free providers by default)
+GOOGLE_GEOCODING_API_KEY=your_google_api_key
+MAPBOX_API_KEY=your_mapbox_api_key
+HERE_API_KEY=your_here_api_key
+
+# Geocoding Settings (optional)
+GEOCODING_CACHE_SIZE=1000
+GEOCODING_CACHE_HOURS=24 

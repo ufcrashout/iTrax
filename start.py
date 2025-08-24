@@ -67,6 +67,16 @@ def start_both():
     """Start both tracker and web app"""
     print("🚀 Starting iTrax (both tracker and web app)...")
     
+    # Start backup scheduler
+    try:
+        from backup_scheduler import start_backup_scheduler
+        if start_backup_scheduler():
+            print("✅ Backup scheduler started (3x daily backups)")
+        else:
+            print("⚠️  Backup scheduler failed to start")
+    except ImportError:
+        print("⚠️  Backup scheduler not available")
+    
     # Start tracker in background
     tracker_process = subprocess.Popen([sys.executable, "tracker.py"])
     print("✅ Tracker started in background")

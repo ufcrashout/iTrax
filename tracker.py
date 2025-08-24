@@ -248,8 +248,7 @@ class iCloudTracker:
                 logger.error("No valid location data to save")
                 return False
             
-            # Create backup before modifying
-            self.backup_database()
+            # Note: Backups are now handled by scheduled backup system (3x daily)
             
             # Save to database
             success = db.save_location_data(valid_location_data)
