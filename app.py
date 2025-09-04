@@ -19,6 +19,7 @@ from decimal import Decimal
 from config import Config
 from database import db
 from analytics import analytics
+from top_locations_scheduler import start_scheduler, stop_scheduler, top_locations_scheduler
 from cache import (
     location_cache, analytics_cache, dashboard_cache, notification_cache,
     cached_query, invalidate_location_cache, QueryTimer, get_all_cache_stats
@@ -193,10 +194,18 @@ if COMPRESS_AVAILABLE:
 else:
     logger.info("Running without compression - install Flask-Compress for better performance")
 
-# Rate limiting
+# Rate limiting with localhost exemption
+def get_rate_limit_key():
+    """Get rate limit key, but exempt localhost"""
+    remote_addr = get_remote_address()
+    # Exempt localhost/127.0.0.1 from rate limiting
+    if remote_addr in ['127.0.0.1', '::1', 'localhost']:
+        return None  # No rate limiting for localhost
+    return remote_addr
+
 limiter = Limiter(
     app=app,
-    key_func=get_remote_address,
+    key_func=get_rate_limit_key,
     default_limits=["200 per day", "50 per hour"]
 )
 
@@ -453,22 +462,38 @@ def dashboard():
         if not selected_date:
             today = get_cst_now().strftime('%Y-%m-%d')
             selected_date = today
-        
+
         # Show 24-hour movement for the selected date (or today if no date specified)
         if selected_date:
             try:
-                # Parse the date and create 24-hour period
-                date_dt = datetime.fromisoformat(selected_date + "T00:00:00")
-                start_time = date_dt.isoformat()
-                
-                # Get 24 hours of movement data with clustering
-                location_history = db.get_device_movement_24h(start_time, device_name)
-                
+                # Determine user's timezone
+                user_tz = 'America/Chicago'
+                if current_user.is_authenticated:
+                    try:
+                        user_settings = db.get_user_settings(current_user.id)
+                        user_tz = user_settings.get('timezone', 'America/Chicago')
+                    except Exception:
+                        pass
+
+                # Build local day window [00:00, 23:59:59] in user's TZ and convert to UTC
+                local_day_start_str = selected_date + 'T00:00:00'
+                start_utc = convert_local_to_utc(local_day_start_str, user_tz)
+                end_utc = start_utc + timedelta(days=1)
+
+                # Get 24 hours of movement data with clustering using UTC window
+                location_history = db.get_locations(
+                    start_time=start_utc.isoformat(),
+                    end_time=end_utc.isoformat(),
+                    device_name=device_name,
+                    limit=500,
+                    cluster_locations=True
+                )
+
                 if not location_history:
                     # Fallback: try to get recent data if nothing found for selected date
-                    recent_start = get_cst_now() - timedelta(hours=48)  # Try last 48 hours
+                    recent_start_local = get_cst_now() - timedelta(hours=48)  # Try last 48 hours in local TZ
                     location_history = db.get_locations(
-                        start_time=recent_start.isoformat(),
+                        start_time=recent_start_local.isoformat(),
                         device_name=device_name,
                         limit=100,
                         cluster_locations=True
@@ -477,22 +502,29 @@ def dashboard():
                         flash(f'No location data found for {selected_date} or recent dates.', 'info')
                     else:
                         flash(f'No data for {selected_date}. Showing recent data instead.', 'info')
-                    
+
             except ValueError:
                 flash('Invalid date format. Please select a valid date.', 'error')
                 location_history = []
 
-        # Get list of available devices for filter dropdown
+        # Get list of available devices for filter dropdown (with display names)
         available_devices = []
         try:
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT DISTINCT device_name 
-                    FROM locations 
-                    ORDER BY device_name
+                    SELECT DISTINCT l.device_name,
+                           COALESCE(d.nickname, l.device_name) AS display_name
+                    FROM locations l
+                    LEFT JOIN devices d ON l.device_name = d.device_name
+                    WHERE l.device_name IS NOT NULL AND l.device_name != ''
+                    ORDER BY display_name
                 ''')
-                available_devices = [row['device_name'] for row in cursor.fetchall()]
+                rows = cursor.fetchall()
+                available_devices = [
+                    {'device_name': row['device_name'], 'display_name': row['display_name']}
+                    for row in rows
+                ]
         except Exception as e:
             logger.error(f"Error getting device list: {e}")
 
@@ -713,11 +745,17 @@ def device_analytics(device_name):
         # Get summary stats for the past week
         summary_stats = analytics.get_device_summary_stats(device_name, days=7)
         
+        # Get cache information for top locations
+        weekly_cache_info = analytics.get_cache_info(device_name, 'weekly')
+        alltime_cache_info = analytics.get_cache_info(device_name, 'alltime')
+        
         return render_template('device_analytics.html', 
                              device_name=device_name,
                              selected_date=selected_date,
                              analytics_data=analytics_data,
-                             summary_stats=summary_stats)
+                             summary_stats=summary_stats,
+                             weekly_cache_info=weekly_cache_info,
+                             alltime_cache_info=alltime_cache_info)
     except Exception as e:
         logger.error(f"Error loading device analytics: {e}")
         flash('An error occurred while loading device analytics.', 'error')
@@ -773,7 +811,7 @@ def heatmap_overview():
                     WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 365 DAY)
                     ORDER BY device_name
                 ''')
-                available_devices = [row[0] for row in cursor.fetchall()]
+                available_devices = [row['device_name'] for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting device list for heatmap: {e}")
 
@@ -858,7 +896,7 @@ def historical_playback():
                     WHERE l.device_name IS NOT NULL AND l.device_name != ''
                     ORDER BY display_name
                 ''')
-                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
+                available_devices = [{'device_name': row['device_name'], 'display_name': row['display_name']} for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting device list for playbook: {e}")
         
@@ -919,7 +957,7 @@ def geofences_overview():
                     WHERE l.device_name IS NOT NULL AND l.device_name != ''
                     ORDER BY display_name
                 ''')
-                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
+                available_devices = [{'device_name': row['device_name'], 'display_name': row['display_name']} for row in cursor.fetchall()]
                 
                 # Get recent device locations for map centering (if no geofences exist)
                 if not geofences:
@@ -930,7 +968,7 @@ def geofences_overview():
                         ORDER BY timestamp DESC
                         LIMIT 10
                     ''')
-                    recent_locations = [{'lat': row[0], 'lng': row[1]} for row in cursor.fetchall()]
+                    recent_locations = [{'lat': row['latitude'], 'lng': row['longitude']} for row in cursor.fetchall()]
                     
         except Exception as e:
             logger.error(f"Error getting device list for geofences: {e}")
@@ -1075,10 +1113,21 @@ def notifications_overview():
                     ORDER BY display_name
                     LIMIT 100
                 ''')
-                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in cursor.fetchall()]
+                rows = cursor.fetchall()
+                available_devices = []
+                for row in rows:
+                    try:
+                        device_info = {'device_name': row['device_name'], 'display_name': row['display_name']}
+                        available_devices.append(device_info)
+                    except KeyError as ke:
+                        logger.error(f"Column not found in row: {ke}. Available columns: {list(row.keys()) if hasattr(row, 'keys') else 'N/A'}")
+                        # Fallback
+                        available_devices.append({'device_name': row.get('device_name', 'Unknown'), 'display_name': row.get('display_name', 'Unknown')})
                 logger.info(f"Retrieved {len(available_devices)} available devices")
         except Exception as e:
             logger.error(f"Error getting device list for notifications: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             available_devices = []
         
         return render_template('notifications.html',
@@ -1183,7 +1232,7 @@ def all_notifications():
             available_devices = [row[0] for row in cursor.fetchall()]
             
             cursor.execute('SELECT DISTINCT notification_type FROM sent_notifications ORDER BY notification_type') 
-            available_types = [row[0] for row in cursor.fetchall()]
+            available_types = [row['notification_type'] for row in cursor.fetchall()]
         
         return render_template('all_notifications.html',
                              notifications=notifications,
@@ -1300,7 +1349,7 @@ def search_overview():
                     WHERE timestamp >= DATE_SUB(NOW(), INTERVAL 365 DAY)
                     ORDER BY device_name
                 ''')
-                available_devices = [row[0] for row in cursor.fetchall()]
+                available_devices = [row['device_name'] for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"Error getting device list for search: {e}")
         
@@ -1441,7 +1490,7 @@ def travel_reports():
                     ORDER BY display_name
                 ''')
                 rows = cursor.fetchall()
-                available_devices = [{'device_name': row[0], 'display_name': row[1]} for row in rows]
+                available_devices = [{'device_name': row['device_name'], 'display_name': row['display_name']} for row in rows]
         except Exception as e:
             logger.error(f"Error getting device list for reports: {e}")
         
@@ -1524,17 +1573,24 @@ def gps_logs():
         if cached_result:
             logs_data, total_count, available_devices = cached_result
         else:
-            # Get available devices for filtering
+            # Get available devices for filtering (with display names)
             available_devices = []
         try:
             with db.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
-                    SELECT DISTINCT device_name 
-                    FROM locations 
-                    ORDER BY device_name
+                    SELECT DISTINCT l.device_name,
+                           COALESCE(d.nickname, l.device_name) AS display_name
+                    FROM locations l
+                    LEFT JOIN devices d ON l.device_name = d.device_name
+                    WHERE l.device_name IS NOT NULL AND l.device_name != ''
+                    ORDER BY display_name
                 ''')
-                available_devices = [row['device_name'] for row in cursor.fetchall()]
+                rows = cursor.fetchall()
+                available_devices = [
+                    {'device_name': row['device_name'], 'display_name': row['display_name']}
+                    for row in rows
+                ]
         except Exception as e:
             logger.error(f"Error getting device list for GPS logs: {e}")
         
@@ -2361,9 +2417,12 @@ def device_management():
         logger.info("Loading device management page...")
         devices = db.get_all_devices_with_nicknames()
         logger.info(f"Device management loaded with {len(devices)} devices")
-        return render_template('device_management.html', devices=devices, csrf_token=generate_csrf())
+        csrf_token = generate_csrf()
+        return render_template('device_management.html', devices=devices, csrf_token=csrf_token)
     except Exception as e:
         logger.error(f"Error loading device management page: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         flash('An error occurred while loading device management.', 'error')
         return redirect(url_for('dashboard'))
 
@@ -2472,5 +2531,19 @@ def cleanup_caches_on_startup():
 # Run cleanup on startup
 cleanup_caches_on_startup()
 
+# Start the top locations cache scheduler
+try:
+    start_scheduler()
+    logger.info("Top locations cache scheduler started successfully")
+except Exception as e:
+    logger.error(f"Failed to start top locations cache scheduler: {e}")
+
+# Shutdown handler for scheduler
+import atexit
+atexit.register(stop_scheduler)
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    finally:
+        stop_scheduler()

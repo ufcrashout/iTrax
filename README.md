@@ -9,6 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-Educational-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/badge/Python-3.8+-green.svg)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-2.0+-red.svg)](https://flask.palletsprojects.com/)
+[![Version](https://img.shields.io/badge/Version-0.1.0--beta-orange.svg)](https://github.com/ufcrashout/iTrax/releases)
 
 </div>
 

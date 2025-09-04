@@ -195,9 +195,25 @@
             <div class="col-lg-6 mb-4">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-trophy me-2"></i>Top 10 - This Week
-                        </h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-trophy me-2"></i>Top 10 - This Week
+                            </h5>
+                            {% if weekly_cache_info.cached %}
+                            <small class="opacity-75">
+                                {% if weekly_cache_info.expired %}
+                                <span class="badge bg-warning">Updating...</span>
+                                {% else %}
+                                <span class="badge bg-success">Cached</span>
+                                {% endif %}
+                                <br>
+                                <div class="mt-1">
+                                    Last: {{ weekly_cache_info.last_update.strftime('%H:%M') }}<br>
+                                    Next: {{ weekly_cache_info.next_update.strftime('%H:%M') }}
+                                </div>
+                            </small>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -215,7 +231,9 @@
                                 <tbody>
                                     {% for location in summary_stats.weekly_top_locations %}
                                     <tr class="location-row" style="cursor: pointer;" 
-                                        onclick="showLocationOnMap({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}')">
+                                        onclick="openInGoogleMaps({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}')"
+                                        oncontextmenu="showLocationOnMap({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}'); return false;"
+                                        title="Left click: Open in Google Maps | Right click: Show on map">
                                         <td class="text-center">
                                             <span class="badge bg-primary">{{ loop.index }}</span>
                                         </td>
@@ -225,6 +243,13 @@
                                                 {{ location.address }}
                                             </div>
                                             <small class="text-muted">{{ location.total_points }} GPS points</small>
+                                            <div class="mt-1">
+                                                <small class="text-muted">
+                                                    First: {{ location.first_visit | user_timezone }}
+                                                    &nbsp;•&nbsp;
+                                                    Last: {{ location.last_visit | user_timezone }}
+                                                </small>
+                                            </div>
                                         </td>
                                         <td>
                                             <span class="visit-badge">{{ location.visit_count }}</span>
@@ -265,9 +290,25 @@
             <div class="col-lg-6 mb-4">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-star me-2"></i>Top 10 - All Time
-                        </h5>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-star me-2"></i>Top 10 - All Time
+                            </h5>
+                            {% if alltime_cache_info.cached %}
+                            <small class="opacity-75">
+                                {% if alltime_cache_info.expired %}
+                                <span class="badge bg-warning">Updating...</span>
+                                {% else %}
+                                <span class="badge bg-success">Cached</span>
+                                {% endif %}
+                                <br>
+                                <div class="mt-1">
+                                    Last: {{ alltime_cache_info.last_update.strftime('%H:%M') }}<br>
+                                    Next: {{ alltime_cache_info.next_update.strftime('%H:%M') }}
+                                </div>
+                            </small>
+                            {% endif %}
+                        </div>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
@@ -285,7 +326,9 @@
                                 <tbody>
                                     {% for location in summary_stats.overall_top_locations %}
                                     <tr class="location-row" style="cursor: pointer;" 
-                                        onclick="showLocationOnMap({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}')">
+                                        onclick="openInGoogleMaps({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}')"
+                                        oncontextmenu="showLocationOnMap({{ location.latitude }}, {{ location.longitude }}, '{{ location.address }}'); return false;"
+                                        title="Left click: Open in Google Maps | Right click: Show on map">
                                         <td class="text-center">
                                             <span class="badge bg-success">{{ loop.index }}</span>
                                         </td>
@@ -295,6 +338,13 @@
                                                 {{ location.address }}
                                             </div>
                                             <small class="text-muted">{{ location.total_points }} GPS points</small>
+                                            <div class="mt-1">
+                                                <small class="text-muted">
+                                                    First: {{ location.first_visit | user_timezone }}
+                                                    &nbsp;•&nbsp;
+                                                    Last: {{ location.last_visit | user_timezone }}
+                                                </small>
+                                            </div>
                                         </td>
                                         <td>
                                             <span class="visit-badge">{{ location.visit_count }}</span>
@@ -417,6 +467,10 @@
         // Weekly Activity Chart
         var summaryData = {{ summary_stats | tojson }};
         console.log('Summary data:', summaryData); // Debug log
+        console.log('summaryData type:', typeof summaryData);
+        console.log('summaryData.error:', summaryData ? summaryData.error : 'summaryData is null');
+        console.log('summaryData.daily_analytics:', summaryData ? summaryData.daily_analytics : 'summaryData is null');
+        console.log('daily_analytics length:', summaryData && summaryData.daily_analytics ? summaryData.daily_analytics.length : 'no daily_analytics');
         
         var ctx = document.getElementById('activityChart').getContext('2d');
         
@@ -492,6 +546,12 @@
                     <small class="mt-2">Data will appear here when the device has been tracked for multiple days</small>
                 </div>
             `;
+        }
+        
+        // Function to open location in Google Maps
+        function openInGoogleMaps(lat, lng, address) {
+            const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lng}&ll=${lat},${lng}&z=16`;
+            window.open(googleMapsUrl, '_blank');
         }
         
         // Function to show a specific location on the map when clicked from top locations

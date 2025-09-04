@@ -312,6 +312,30 @@ class Database:
                     INDEX idx_expires (expires_at)
                 ) ENGINE=InnoDB""")
                 
+                # Cached top locations table for scheduled updates
+                cursor.execute("""CREATE TABLE IF NOT EXISTS cached_top_locations (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    device_name VARCHAR(255) NOT NULL,
+                    cache_type ENUM('weekly', 'alltime') NOT NULL,
+                    address TEXT NOT NULL,
+                    visit_count INT NOT NULL,
+                    total_time_minutes DECIMAL(10, 2) NOT NULL,
+                    total_time_hours DECIMAL(10, 2) NOT NULL,
+                    latitude DECIMAL(10, 8) NOT NULL,
+                    longitude DECIMAL(11, 8) NOT NULL,
+                    first_visit TIMESTAMP NOT NULL,
+                    last_visit TIMESTAMP NOT NULL,
+                    total_points INT NOT NULL,
+                    avg_time_per_visit DECIMAL(10, 2) NOT NULL,
+                    ranking INT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    next_update TIMESTAMP NOT NULL,
+                    INDEX idx_device_type (device_name, cache_type),
+                    INDEX idx_ranking (device_name, cache_type, ranking),
+                    INDEX idx_next_update (next_update),
+                    UNIQUE KEY unique_location (device_name, cache_type, ranking)
+                ) ENGINE=InnoDB""")
+                
                 # Add nickname column to devices table if it doesn't exist
                 try:
                     cursor.execute("""
@@ -1550,6 +1574,275 @@ class Database:
                 'expired_entries': 0,
                 'cache_size_kb': 0
             }
+    
+    def migrate_json_data(self):
+        """Migrate existing JSON location data files to database"""
+        import os
+        import json
+        from pathlib import Path
+        
+        try:
+            # Look for common JSON data file patterns
+            data_files = []
+            base_dir = Path('.')
+            
+            # Common file patterns for location data
+            patterns = [
+                'location_data*.json',
+                'locations*.json', 
+                'gps_data*.json',
+                'device_locations*.json',
+                'icloud_locations*.json'
+            ]
+            
+            for pattern in patterns:
+                data_files.extend(list(base_dir.glob(pattern)))
+            
+            if not data_files:
+                logger.info("No JSON data files found for migration")
+                return True
+            
+            migrated_count = 0
+            total_records = 0
+            
+            for data_file in data_files:
+                logger.info(f"Migrating data from {data_file}")
+                
+                try:
+                    with open(data_file, 'r') as f:
+                        data = json.load(f)
+                    
+                    # Handle different JSON structures
+                    locations_data = []
+                    
+                    if isinstance(data, list):
+                        # Direct list of location records
+                        locations_data = data
+                    elif isinstance(data, dict):
+                        # Check for common dictionary structures
+                        if 'locations' in data:
+                            locations_data = data['locations']
+                        elif 'data' in data:
+                            locations_data = data['data']
+                        elif 'records' in data:
+                            locations_data = data['records']
+                        else:
+                            # Try to extract location-like records from any key
+                            for key, value in data.items():
+                                if isinstance(value, list) and len(value) > 0:
+                                    # Check if first item looks like location data
+                                    if all(field in value[0] for field in ['latitude', 'longitude'] if isinstance(value[0], dict)):
+                                        locations_data = value
+                                        break
+                    
+                    if not locations_data:
+                        logger.warning(f"No location data found in {data_file}")
+                        continue
+                    
+                    # Normalize the data format
+                    normalized_data = []
+                    for record in locations_data:
+                        if not isinstance(record, dict):
+                            continue
+                            
+                        # Extract required fields with various possible names
+                        normalized_record = {}
+                        
+                        # Device name
+                        for field in ['device_name', 'deviceName', 'name', 'device']:
+                            if field in record:
+                                normalized_record['device_name'] = str(record[field])
+                                break
+                        
+                        # Coordinates
+                        for field in ['latitude', 'lat']:
+                            if field in record:
+                                normalized_record['latitude'] = float(record[field])
+                                break
+                                
+                        for field in ['longitude', 'lng', 'lon']:
+                            if field in record:
+                                normalized_record['longitude'] = float(record[field])
+                                break
+                        
+                        # Timestamp
+                        for field in ['timestamp', 'time', 'date', 'datetime']:
+                            if field in record:
+                                normalized_record['timestamp'] = record[field]
+                                break
+                        
+                        # Optional fields
+                        if 'accuracy' in record:
+                            normalized_record['accuracy'] = record['accuracy']
+                        if 'battery_level' in record or 'batteryLevel' in record:
+                            normalized_record['battery_level'] = record.get('battery_level', record.get('batteryLevel'))
+                        if 'is_charging' in record or 'charging' in record:
+                            normalized_record['is_charging'] = record.get('is_charging', record.get('charging'))
+                        
+                        # Validate required fields
+                        if all(field in normalized_record for field in ['device_name', 'latitude', 'longitude', 'timestamp']):
+                            normalized_data.append(normalized_record)
+                    
+                    if normalized_data:
+                        # Save to database
+                        if self.save_location_data(normalized_data):
+                            total_records += len(normalized_data)
+                            migrated_count += 1
+                            logger.info(f"Successfully migrated {len(normalized_data)} records from {data_file}")
+                            
+                            # Create backup of original file
+                            backup_path = f"{data_file}.migrated_backup"
+                            os.rename(data_file, backup_path)
+                            logger.info(f"Original file backed up to {backup_path}")
+                        else:
+                            logger.error(f"Failed to save data from {data_file} to database")
+                    else:
+                        logger.warning(f"No valid location records found in {data_file}")
+                
+                except json.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON in {data_file}: {e}")
+                except Exception as e:
+                    logger.error(f"Error processing {data_file}: {e}")
+            
+            if migrated_count > 0:
+                logger.info(f"Migration completed: {migrated_count} files processed, {total_records} total records migrated")
+            else:
+                logger.info("No data files were successfully migrated")
+            
+            return migrated_count > 0
+            
+        except Exception as e:
+            logger.error(f"Error during JSON data migration: {e}")
+            return False
+
+    def save_cached_top_locations(self, device_name: str, cache_type: str, locations: List[Dict]) -> bool:
+        """Save cached top locations to database"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Calculate next update time (2-3 hours from now)
+                next_update = datetime.now() + timedelta(hours=2.5)
+                
+                # Clear existing cache for this device and type
+                cursor.execute("""
+                    DELETE FROM cached_top_locations 
+                    WHERE device_name = %s AND cache_type = %s
+                """, (device_name, cache_type))
+                
+                # Insert new cached locations
+                for i, location in enumerate(locations[:10], 1):  # Top 10 only
+                    cursor.execute("""
+                        INSERT INTO cached_top_locations 
+                        (device_name, cache_type, address, visit_count, total_time_minutes, 
+                         total_time_hours, latitude, longitude, first_visit, last_visit, 
+                         total_points, avg_time_per_visit, ranking, next_update)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        device_name, cache_type, location['address'], location['visit_count'],
+                        location['total_time_minutes'], location['total_time_hours'], 
+                        location['latitude'], location['longitude'], 
+                        location['first_visit'], location['last_visit'], 
+                        location['total_points'], location['avg_time_per_visit'], 
+                        i, next_update
+                    ))
+                
+                conn.commit()
+                logger.info(f"Cached {len(locations)} top locations for {device_name} ({cache_type})")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to save cached top locations: {e}")
+            return False
+
+    def get_cached_top_locations(self, device_name: str, cache_type: str) -> Dict:
+        """Get cached top locations from database"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    SELECT address, visit_count, total_time_minutes, total_time_hours,
+                           latitude, longitude, first_visit, last_visit, 
+                           total_points, avg_time_per_visit, ranking,
+                           updated_at, next_update
+                    FROM cached_top_locations 
+                    WHERE device_name = %s AND cache_type = %s
+                    ORDER BY ranking ASC
+                """, (device_name, cache_type))
+                
+                rows = cursor.fetchall()
+                
+                if not rows:
+                    return {"locations": [], "cached": False}
+                
+                # Check if cache is still valid
+                first_row = rows[0]
+                next_update = first_row['next_update']
+                is_expired = datetime.now() > next_update
+                
+                locations = []
+                for row in rows:
+                    locations.append({
+                        'address': row['address'],
+                        'visit_count': row['visit_count'],
+                        'total_time_minutes': float(row['total_time_minutes']),
+                        'total_time_hours': float(row['total_time_hours']),
+                        'latitude': float(row['latitude']),
+                        'longitude': float(row['longitude']),
+                        'first_visit': row['first_visit'],
+                        'last_visit': row['last_visit'],
+                        'total_points': row['total_points'],
+                        'avg_time_per_visit': float(row['avg_time_per_visit'])
+                    })
+                
+                return {
+                    "locations": locations,
+                    "cached": True,
+                    "expired": is_expired,
+                    "last_update": first_row['updated_at'],
+                    "next_update": next_update
+                }
+                
+        except Exception as e:
+            logger.error(f"Failed to get cached top locations: {e}")
+            return {"locations": [], "cached": False}
+
+    def get_devices_needing_cache_update(self, cache_type: str) -> List[str]:
+        """Get devices that need cache updates"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get all devices
+                cursor.execute("SELECT DISTINCT device_name FROM locations")
+                all_devices = [row['device_name'] for row in cursor.fetchall()]
+                
+                # Get devices with expired cache
+                cursor.execute("""
+                    SELECT DISTINCT device_name
+                    FROM cached_top_locations 
+                    WHERE cache_type = %s AND next_update <= NOW()
+                """, (cache_type,))
+                expired_devices = [row['device_name'] for row in cursor.fetchall()]
+                
+                # Get devices without any cache
+                cursor.execute("""
+                    SELECT DISTINCT device_name
+                    FROM locations
+                    WHERE device_name NOT IN (
+                        SELECT device_name FROM cached_top_locations WHERE cache_type = %s
+                    )
+                """, (cache_type,))
+                uncached_devices = [row['device_name'] for row in cursor.fetchall()]
+                
+                # Combine and deduplicate
+                needs_update = list(set(expired_devices + uncached_devices))
+                return needs_update
+                
+        except Exception as e:
+            logger.error(f"Failed to get devices needing cache update: {e}")
+            return []
 
 # Global database instance
 db = Database()

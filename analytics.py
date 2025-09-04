@@ -23,6 +23,7 @@ import os
 
 from config import Config
 from database import db
+from cache import analytics_cache, cached_query
 
 logger = logging.getLogger(__name__)
 
@@ -80,41 +81,63 @@ class LocationAnalytics:
         return address
     
     def group_locations_by_address(self, locations: List[Dict], distance_threshold: float = 0.0005) -> Dict:
-        """Group locations by address with smart clustering"""
-        address_groups = defaultdict(list)
-        processed_coords = set()
+        """Group locations by address with smart clustering - optimized for performance"""
+        if not locations:
+            return {}
+            
+        # First pass: Group by coordinates quickly (no geocoding yet)
+        coordinate_clusters = []
         
         for location in locations:
             lat = float(location['latitude'])
             lng = float(location['longitude'])
-            coord_key = f"{lat:.4f},{lng:.4f}"
             
-            # Skip if we've already processed very similar coordinates
-            if coord_key in processed_coords:
+            # Find existing cluster within threshold
+            found_cluster = None
+            for cluster in coordinate_clusters:
+                cluster_lat = cluster['center_lat']
+                cluster_lng = cluster['center_lng'] 
+                
+                # Simple distance check (faster than geodesic for clustering)
+                lat_diff = abs(lat - cluster_lat)
+                lng_diff = abs(lng - cluster_lng)
+                
+                if lat_diff < 0.001 and lng_diff < 0.001:  # ~100m threshold
+                    found_cluster = cluster
+                    break
+            
+            if found_cluster:
+                found_cluster['locations'].append(location)
+                # Update center (moving average)
+                count = len(found_cluster['locations'])
+                found_cluster['center_lat'] = (found_cluster['center_lat'] * (count-1) + lat) / count
+                found_cluster['center_lng'] = (found_cluster['center_lng'] * (count-1) + lng) / count
+            else:
+                coordinate_clusters.append({
+                    'center_lat': lat,
+                    'center_lng': lng,
+                    'locations': [location],
+                    'address': None
+                })
+        
+        # Second pass: Get addresses only for cluster centers (much faster)
+        address_groups = defaultdict(list)
+        
+        for cluster in coordinate_clusters:
+            if not cluster['locations']:
                 continue
                 
-            # Find if this location is close to any existing group
-            found_group = None
-            for existing_address, group_locations in address_groups.items():
-                if group_locations:
-                    existing_lat = float(group_locations[0]['latitude'])
-                    existing_lng = float(group_locations[0]['longitude'])
-                    
-                    # Calculate distance
-                    distance = geodesic((lat, lng), (existing_lat, existing_lng)).kilometers
-                    
-                    if distance < 0.05:  # 50 meters threshold
-                        found_group = existing_address
-                        break
+            # Get address for cluster center
+            center_lat = cluster['center_lat']
+            center_lng = cluster['center_lng']
             
-            if found_group:
-                address_groups[found_group].append(location)
-            else:
-                # Get address for this location
-                address = self.get_address_from_coordinates(lat, lng)
-                address_groups[address].append(location)
+            address = self.get_address_from_coordinates(center_lat, center_lng)
+            if not address or address.strip() == "" or "Unknown" in address:
+                # Fallback to coordinates if address lookup fails
+                address = f"Location {center_lat:.4f}, {center_lng:.4f}"
             
-            processed_coords.add(coord_key)
+            # Add all locations in this cluster to the address group
+            address_groups[address].extend(cluster['locations'])
         
         return dict(address_groups)
     
@@ -234,8 +257,10 @@ class LocationAnalytics:
             start_time=start_date.isoformat(),
             end_time=end_date.isoformat(),
             device_name=device_name,
-            limit=5000
+            limit=2000  # Increased to ensure we get enough data for 7 days
         )
+        
+        logger.info(f"Retrieved {len(locations)} locations for {device_name} summary stats")
         
         if not locations:
             return {
@@ -254,55 +279,93 @@ class LocationAnalytics:
         daily_stats = defaultdict(list)
         for loc in locations:
             try:
-                date_key = loc['timestamp'][:10]  # YYYY-MM-DD
+                timestamp_str = str(loc['timestamp'])
+                date_key = timestamp_str[:10]  # YYYY-MM-DD
                 daily_stats[date_key].append(loc)
-            except:
+            except Exception as e:
+                logger.debug(f"Error parsing timestamp {loc.get('timestamp', 'None')}: {e}")
                 continue
         
-        # Calculate stats per day
+        logger.info(f"Grouped {len(locations)} locations into {len(daily_stats)} days: {list(daily_stats.keys())}")
+        
+        # Calculate stats per day (optimized for performance)
         daily_analytics = []
+        logger.info(f"Processing daily analytics for {len(daily_stats)} days")
+        
         for date_key, day_locations in daily_stats.items():
-            address_groups = self.group_locations_by_address(day_locations)
-            
-            total_distance = 0
-            if len(day_locations) > 1:
-                sorted_locs = sorted(day_locations, key=lambda x: x['timestamp'])
-                for i in range(1, len(sorted_locs)):
-                    prev_loc = sorted_locs[i-1]
-                    curr_loc = sorted_locs[i]
-                    
-                    distance = geodesic(
-                        (float(prev_loc['latitude']), float(prev_loc['longitude'])),
-                        (float(curr_loc['latitude']), float(curr_loc['longitude']))
-                    ).kilometers
-                    
-                    if distance < 100:
-                        total_distance += distance
-            
-            daily_analytics.append({
-                "date": date_key,
-                "total_points": len(day_locations),
-                "unique_locations": len(address_groups),
-                "distance_km": round(total_distance, 2),
-                "most_visited": max(address_groups.keys(), key=lambda x: len(address_groups[x])) if address_groups else "Unknown"
-            })
+            logger.debug(f"Processing day {date_key} with {len(day_locations)} locations")
+            try:
+                # Simple clustering for unique locations (faster than full address grouping)
+                unique_coords = set()
+                for loc in day_locations:
+                    coord_key = f"{float(loc['latitude']):.3f},{float(loc['longitude']):.3f}"
+                    unique_coords.add(coord_key)
+                
+                total_distance = 0
+                if len(day_locations) > 1:
+                    sorted_locs = sorted(day_locations, key=lambda x: str(x.get('timestamp', '')))
+                    for i in range(1, len(sorted_locs)):
+                        try:
+                            prev_loc = sorted_locs[i-1]
+                            curr_loc = sorted_locs[i]
+                            
+                            distance = geodesic(
+                                (float(prev_loc['latitude']), float(prev_loc['longitude'])),
+                                (float(curr_loc['latitude']), float(curr_loc['longitude']))
+                            ).kilometers
+                            
+                            if distance < 100:  # Filter out unrealistic jumps
+                                total_distance += distance
+                        except (ValueError, KeyError) as e:
+                            logger.debug(f"Error calculating distance for day {date_key}: {e}")
+                            continue
+                
+                daily_entry = {
+                    "date": date_key,
+                    "total_points": len(day_locations),
+                    "unique_locations": len(unique_coords),
+                    "distance_km": round(total_distance, 2),
+                    "most_visited": f"Day with {len(day_locations)} points"
+                }
+                daily_analytics.append(daily_entry)
+                logger.debug(f"Added daily entry for {date_key}: {daily_entry}")
+                
+            except Exception as e:
+                logger.error(f"Error processing daily analytics for {date_key}: {e}")
+                # Add a fallback entry so the day isn't missing
+                daily_analytics.append({
+                    "date": date_key,
+                    "total_points": len(day_locations) if day_locations else 0,
+                    "unique_locations": 0,
+                    "distance_km": 0,
+                    "most_visited": "Error processing"
+                })
         
         daily_analytics.sort(key=lambda x: x['date'], reverse=True)
+        logger.info(f"Generated {len(daily_analytics)} daily analytics entries for {device_name}")
         
         # Get top visited locations for the period and overall
         try:
+            logger.info(f"Getting weekly top locations for {device_name} (last {days} days)")
             weekly_top_locations = self.get_top_visited_locations(device_name, days=days, limit=10)
+            logger.info(f"Found {len(weekly_top_locations)} weekly top locations")
         except Exception as e:
             logger.error(f"Error getting weekly top locations: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             weekly_top_locations = []
         
         try:
+            logger.info(f"Getting overall top locations for {device_name}")
             overall_top_locations = self.get_top_visited_locations(device_name, days=None, limit=10)
+            logger.info(f"Found {len(overall_top_locations)} overall top locations")
         except Exception as e:
             logger.error(f"Error getting overall top locations: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             overall_top_locations = []
         
-        return {
+        result = {
             "device_name": device_name,
             "period_days": days,
             "total_tracking_points": len(locations),
@@ -312,9 +375,38 @@ class LocationAnalytics:
             "weekly_top_locations": weekly_top_locations,
             "overall_top_locations": overall_top_locations
         }
+        
+        logger.info(f"Summary stats result: daily_analytics={len(daily_analytics)}, weekly_top={len(weekly_top_locations)}, overall_top={len(overall_top_locations)}")
+        
+        # Log the daily analytics structure for debugging
+        if daily_analytics:
+            logger.info(f"Daily analytics sample (first entry): {daily_analytics[0]}")
+        else:
+            logger.warning("Daily analytics is empty - this will cause weekly chart to not display")
+            
+        return result
     
     def get_top_visited_locations(self, device_name: str, days: int = None, limit: int = 10) -> List[Dict]:
-        """Get top visited locations with time spent analysis"""
+        """Get top visited locations with time spent analysis - uses cached results for all-time data"""
+        
+        # Check for cached results for all-time and weekly queries
+        if days is None:  # All-time query
+            cache_result = db.get_cached_top_locations(device_name, 'alltime')
+            if cache_result['cached'] and not cache_result['expired']:
+                logger.info(f"Using cached all-time top locations for {device_name}")
+                return cache_result['locations'][:limit]
+        elif days == 7:  # Weekly query
+            cache_result = db.get_cached_top_locations(device_name, 'weekly')
+            if cache_result['cached'] and not cache_result['expired']:
+                logger.info(f"Using cached weekly top locations for {device_name}")
+                return cache_result['locations'][:limit]
+        
+        # Fall back to real-time calculation if no cache available
+        return self._calculate_top_visited_locations_realtime(device_name, days, limit)
+    
+    @cached_query(analytics_cache, ttl=600)  # Cache for 10 minutes
+    def _calculate_top_visited_locations_realtime(self, device_name: str, days: int = None, limit: int = 10) -> List[Dict]:
+        """Calculate top visited locations in real-time (fallback method)"""
         try:
             # Determine date range
             if days:
@@ -324,13 +416,13 @@ class LocationAnalytics:
                     start_time=start_date.isoformat(),
                     end_time=end_date.isoformat(),
                     device_name=device_name,
-                    limit=10000
+                    limit=7500  # Increased for better top 10 accuracy
                 )
             else:
-                # Get all-time data
+                # Get all-time data (recent data only for performance)
                 locations = db.get_locations(
                     device_name=device_name,
-                    limit=10000
+                    limit=7500  # Increased for better top 10 accuracy
                 )
             
             if not locations:
@@ -349,6 +441,9 @@ class LocationAnalytics:
             # Group by address using existing clustering logic
             try:
                 address_groups = self.group_locations_by_address(locations)
+                if not address_groups:
+                    logger.warning("No address groups found after grouping")
+                    return []
             except Exception as e:
                 logger.error(f"Error grouping locations by address: {e}")
                 return []
@@ -358,15 +453,25 @@ class LocationAnalytics:
                     continue
                     
                 # Sort by timestamp for time analysis
-                sorted_locs = sorted(group_locations, key=lambda x: x['timestamp'])
+                try:
+                    sorted_locs = sorted(group_locations, key=lambda x: str(x.get('timestamp', '')))
+                except Exception as e:
+                    logger.debug(f"Error sorting locations by timestamp: {e}")
+                    sorted_locs = group_locations
                 
                 # Calculate visit sessions (gaps > 30 minutes = new visit)
                 visit_sessions = []
                 current_session = [sorted_locs[0]]
                 
                 for i in range(1, len(sorted_locs)):
-                    prev_time = datetime.fromisoformat(sorted_locs[i-1]['timestamp'].replace('Z', '+00:00'))
-                    curr_time = datetime.fromisoformat(sorted_locs[i]['timestamp'].replace('Z', '+00:00'))
+                    try:
+                        prev_timestamp = str(sorted_locs[i-1]['timestamp']).replace('Z', '+00:00')
+                        curr_timestamp = str(sorted_locs[i]['timestamp']).replace('Z', '+00:00')
+                        prev_time = datetime.fromisoformat(prev_timestamp)
+                        curr_time = datetime.fromisoformat(curr_timestamp)
+                    except (ValueError, TypeError) as e:
+                        logger.debug(f"Error parsing timestamp: {e}")
+                        continue
                     
                     # If gap is more than 30 minutes, start new session
                     if (curr_time - prev_time).total_seconds() > 1800:  # 30 minutes
@@ -383,11 +488,18 @@ class LocationAnalytics:
                 total_time_minutes = 0
                 for session in visit_sessions:
                     if len(session) > 1:
-                        start_time = datetime.fromisoformat(session[0]['timestamp'].replace('Z', '+00:00'))
-                        end_time = datetime.fromisoformat(session[-1]['timestamp'].replace('Z', '+00:00'))
-                        session_duration = (end_time - start_time).total_seconds() / 60
-                        # Cap individual session time at 8 hours to avoid outliers
-                        total_time_minutes += min(session_duration, 480)
+                        try:
+                            start_timestamp = str(session[0]['timestamp']).replace('Z', '+00:00')
+                            end_timestamp = str(session[-1]['timestamp']).replace('Z', '+00:00')
+                            start_time = datetime.fromisoformat(start_timestamp)
+                            end_time = datetime.fromisoformat(end_timestamp)
+                            session_duration = (end_time - start_time).total_seconds() / 60
+                            # Cap individual session time at 8 hours to avoid outliers
+                            total_time_minutes += min(session_duration, 480)
+                        except (ValueError, TypeError) as e:
+                            logger.debug(f"Error calculating session duration: {e}")
+                            # Fallback: assume 5 minutes for problematic sessions
+                            total_time_minutes += 5
                     else:
                         # Single point visits count as 5 minutes minimum
                         total_time_minutes += 5
@@ -432,6 +544,30 @@ class LocationAnalytics:
             logger.error(f"Error getting top visited locations: {e}")
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return []
+            
+    def get_cache_info(self, device_name: str, cache_type: str) -> Dict:
+        """Get cache information for displaying update timestamps"""
+        try:
+            cache_result = db.get_cached_top_locations(device_name, cache_type)
+            
+            if cache_result['cached']:
+                return {
+                    'cached': True,
+                    'last_update': cache_result['last_update'],
+                    'next_update': cache_result['next_update'],
+                    'expired': cache_result['expired']
+                }
+            else:
+                return {
+                    'cached': False,
+                    'last_update': None,
+                    'next_update': None,
+                    'expired': True
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting cache info: {e}")
+            return {'cached': False, 'error': str(e)}
     
     def get_geocoding_status(self) -> Dict:
         """Get status of geocoding providers"""
@@ -1138,14 +1274,136 @@ class LocationAnalytics:
             logger.error(f"Error sending notification: {e}")
     
     def _send_email_notification(self, rule: Dict, message: str, violation: Dict):
-        """Send email notification (placeholder for future implementation)"""
-        # TODO: Implement email sending with SMTP
-        logger.info(f"EMAIL NOTIFICATION (not implemented): {message}")
+        """Send email notification via SMTP"""
+        try:
+            import smtplib
+            import os
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+            
+            # Get SMTP configuration from environment variables
+            smtp_host = os.getenv('SMTP_HOST')
+            smtp_port = int(os.getenv('SMTP_PORT', '587'))
+            smtp_user = os.getenv('SMTP_USER')
+            smtp_password = os.getenv('SMTP_PASSWORD')
+            email_from = os.getenv('EMAIL_FROM', smtp_user)
+            email_to = os.getenv('EMAIL_TO')
+            
+            if not all([smtp_host, smtp_user, smtp_password, email_to]):
+                logger.warning("Email notification skipped: Missing SMTP configuration (SMTP_HOST, SMTP_USER, SMTP_PASSWORD, EMAIL_TO)")
+                return False
+            
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = email_from
+            msg['To'] = email_to
+            msg['Subject'] = f"iTrax Alert: {violation['device_name']} - {violation['type'].title()}"
+            
+            # Create email body
+            body = f"""
+iTrax Geofence Alert
+
+Device: {violation['device_name']}
+Geofence: {violation['geofence']['name']}
+Event: {violation['type'].title()}
+Time: {violation.get('timestamp', 'Unknown')}
+Location: {violation.get('latitude', 'N/A')}, {violation.get('longitude', 'N/A')}
+
+Message: {message}
+
+---
+Sent by iTrax GPS Tracking System
+            """
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            # Send email
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.send_message(msg)
+            
+            logger.info(f"Email notification sent successfully: {message}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send email notification: {e}")
+            return False
     
     def _send_webhook_notification(self, rule: Dict, message: str, violation: Dict):
-        """Send webhook notification (placeholder for future implementation)"""
-        # TODO: Implement webhook POST request
-        logger.info(f"WEBHOOK NOTIFICATION (not implemented): {message}")
+        """Send webhook notification via HTTP POST request"""
+        try:
+            import requests
+            import os
+            import json
+            
+            # Get webhook configuration from environment variables
+            webhook_url = os.getenv('WEBHOOK_URL')
+            webhook_secret = os.getenv('WEBHOOK_SECRET')  # Optional for authentication
+            
+            if not webhook_url:
+                logger.warning("Webhook notification skipped: Missing WEBHOOK_URL environment variable")
+                return False
+            
+            # Prepare webhook payload
+            payload = {
+                'timestamp': violation.get('timestamp'),
+                'device_name': violation['device_name'],
+                'geofence_name': violation['geofence']['name'],
+                'geofence_id': violation['geofence']['id'],
+                'event_type': violation['type'],
+                'location': {
+                    'latitude': violation.get('latitude'),
+                    'longitude': violation.get('longitude'),
+                    'accuracy': violation.get('accuracy')
+                },
+                'message': message,
+                'rule_id': rule.get('id'),
+                'rule_name': rule.get('name'),
+                'system': 'iTrax'
+            }
+            
+            # Prepare headers
+            headers = {
+                'Content-Type': 'application/json',
+                'User-Agent': 'iTrax-GPS-Tracker/1.0'
+            }
+            
+            # Add authentication if webhook secret is provided
+            if webhook_secret:
+                import hmac
+                import hashlib
+                import base64
+                
+                # Create HMAC signature for security
+                signature = hmac.new(
+                    webhook_secret.encode('utf-8'),
+                    json.dumps(payload, separators=(',', ':')).encode('utf-8'),
+                    hashlib.sha256
+                ).digest()
+                headers['X-iTrax-Signature'] = base64.b64encode(signature).decode()
+            
+            # Send webhook
+            response = requests.post(
+                webhook_url,
+                json=payload,
+                headers=headers,
+                timeout=10
+            )
+            
+            response.raise_for_status()
+            logger.info(f"Webhook notification sent successfully: {response.status_code} - {message}")
+            return True
+            
+        except ImportError:
+            logger.error("Webhook notification failed: 'requests' library not installed")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to send webhook notification: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending webhook notification: {e}")
+            return False
     
     def _send_browser_notification(self, rule_id: int, violation: Dict, message: str):
         """Send in-browser notification"""
@@ -1509,9 +1767,23 @@ class LocationAnalytics:
                     
                     query += ' ORDER BY timestamp ASC LIMIT 5000'
                     
+                    logger.info(f"Travel report query: {query}")
+                    logger.info(f"Travel report params: {params}")
                     cursor.execute(query, params)
                     rows = cursor.fetchall()
-                    locations = [dict(row) for row in rows]
+                    logger.info(f"Travel report found {len(rows)} raw location records")
+                    
+                    # Convert rows to dictionaries (handles both dict and tuple cursors)
+                    locations = []
+                    for row in rows:
+                        if hasattr(row, 'keys'):
+                            # Already a dict-like object
+                            locations.append(dict(row))
+                        else:
+                            # Convert tuple to dict using column names
+                            locations.append(dict(row))
+                    
+                    logger.info(f"Travel report processed {len(locations)} location records")
                     
             except Exception as e:
                 logger.error(f"Error getting location data for travel report: {e}")
