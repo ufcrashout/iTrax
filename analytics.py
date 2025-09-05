@@ -18,6 +18,9 @@ from collections import defaultdict
 import statistics
 import folium
 from folium.plugins import HeatMap
+import json
+import requests
+import os
 import tempfile
 import os
 
@@ -206,6 +209,15 @@ class LocationAnalytics:
             timestamps = [loc['timestamp'] for loc in group_locations]
             timestamps.sort()
             
+            # Create stable place id per device and cluster center
+            place_id = None
+            try:
+                device_for_place = str(group_locations[0]['device_name']) if group_locations and 'device_name' in group_locations[0] else None
+                if device_for_place:
+                    place_id = db.get_or_create_place_id(device_for_place, avg_lat, avg_lng, address)
+            except Exception as _e:
+                logger.debug(f"place_id generation failed: {_e}")
+            
             location_analytics.append({
                 "address": address,
                 "latitude": avg_lat,
@@ -215,7 +227,8 @@ class LocationAnalytics:
                 "avg_time_minutes": round(time_stats["avg_time"], 1),
                 "first_visit": timestamps[0],
                 "last_visit": timestamps[-1],
-                "locations": group_locations
+                "locations": group_locations,
+                "place_id": place_id
             })
         
         # Calculate total distance traveled
@@ -793,7 +806,7 @@ class LocationAnalytics:
                 device_tracks[location['device_name']].append({
                     'latitude': float(location['latitude']),
                     'longitude': float(location['longitude']),
-                    'timestamp': location['timestamp'],
+                    'timestamp': dt.isoformat(),
                     'timestamp_cst': cst_dt.strftime('%Y-%m-%d %I:%M:%S %p CST'),
                     'device_name': location['device_name'],
                     'unix_timestamp': int(dt.timestamp())
@@ -1406,7 +1419,7 @@ Sent by iTrax GPS Tracking System
             return False
     
     def _send_browser_notification(self, rule_id: int, violation: Dict, message: str):
-        """Send in-browser notification"""
+        """Send in-browser notification and push notification"""
         try:
             # Determine priority based on violation type and rule settings
             priority = 'high' if violation['type'].upper() in ['ENTRY', 'EXIT'] else 'normal'
@@ -1422,10 +1435,131 @@ Sent by iTrax GPS Tracking System
                 event_type=violation['type'].lower()
             )
             
+            # Send push notification to all active subscribers
+            self._send_push_notification(message, violation)
+            
             logger.info(f"BROWSER NOTIFICATION: {message}")
                 
         except Exception as e:
             logger.error(f"Error sending browser notification: {e}")
+
+    def _send_push_notification(self, message: str, violation: Dict):
+        """Send push notification to all active subscribers"""
+        try:
+            # Get all active push subscriptions
+            subscriptions = self.db.get_active_push_subscriptions()
+            
+            if not subscriptions:
+                logger.debug("No active push subscriptions found")
+                return
+            
+            # Create notification payload
+            payload = {
+                'title': 'iTrax Location Alert',
+                'body': message,
+                'icon': '/static/images/favicon.ico',
+                'badge': '/static/images/badge.png',
+                'data': {
+                    'device_name': violation.get('device_name'),
+                    'geofence_name': violation.get('geofence', {}).get('name'),
+                    'event_type': violation.get('type'),
+                    'timestamp': datetime.now().isoformat(),
+                    'url': '/notifications/all'
+                }
+            }
+            
+            # Get VAPID keys from environment
+            vapid_private_key = os.getenv('VAPID_PRIVATE_KEY')
+            vapid_public_key = os.getenv('VAPID_PUBLIC_KEY', 'BEl62iUYgUivxIkv69yViEuiBIa40HI0DLI5kz5Fs0cEiw7MrKp9t0pNDhLRCb7cWfpVRYvx3VfP-J3LNlLBxL4')
+            
+            if not vapid_private_key:
+                logger.warning("VAPID private key not configured, skipping push notifications")
+                return
+            
+            # Send to all subscriptions
+            successful = 0
+            failed = 0
+            
+            for subscription in subscriptions:
+                try:
+                    push_data = {
+                        'endpoint': subscription['endpoint'],
+                        'keys': {
+                            'p256dh': subscription['p256dh'],
+                            'auth': subscription['auth']
+                        }
+                    }
+                    
+                    # Use pywebpush if available, otherwise use requests directly
+                    try:
+                        from pywebpush import webpush
+                        
+                        webpush(
+                            subscription_info=push_data,
+                            data=json.dumps(payload),
+                            vapid_private_key=vapid_private_key,
+                            vapid_claims={
+                                'sub': 'mailto:admin@itrax.app',
+                                'aud': subscription['endpoint'].split('/', 3)[2]
+                            }
+                        )
+                        successful += 1
+                        
+                    except ImportError:
+                        # Fallback to direct HTTP request
+                        self._send_push_via_http(subscription, payload, vapid_private_key, vapid_public_key)
+                        successful += 1
+                        
+                except Exception as e:
+                    logger.error(f"Failed to send push to subscription {subscription['id']}: {e}")
+                    failed += 1
+                    # Consider marking subscription as inactive if it consistently fails
+                    if "expired" in str(e).lower() or "invalid" in str(e).lower():
+                        self.db.remove_push_subscription(subscription['endpoint'])
+            
+            if successful > 0:
+                logger.info(f"Sent push notifications to {successful} subscribers")
+            if failed > 0:
+                logger.warning(f"Failed to send push notifications to {failed} subscribers")
+                
+        except Exception as e:
+            logger.error(f"Error sending push notifications: {e}")
+    
+    def _send_push_via_http(self, subscription: Dict, payload: Dict, vapid_private_key: str, vapid_public_key: str):
+        """Fallback method to send push notification via direct HTTP request"""
+        try:
+            # This is a simplified version - in production you'd need proper VAPID signing
+            import base64
+            import hashlib
+            import hmac
+            from urllib.parse import urlparse
+            
+            endpoint = subscription['endpoint']
+            parsed = urlparse(endpoint)
+            
+            headers = {
+                'Content-Type': 'application/json',
+                'TTL': '86400'  # 24 hours
+            }
+            
+            # Add FCM authorization if it's a Firebase endpoint
+            if 'fcm.googleapis.com' in endpoint:
+                # For FCM, you'd need server key - this is simplified
+                headers['Authorization'] = f'key={os.getenv("FCM_SERVER_KEY", "")}'
+            
+            response = requests.post(
+                endpoint,
+                headers=headers,
+                json=payload,
+                timeout=10
+            )
+            
+            if response.status_code not in [200, 201, 204]:
+                logger.warning(f"Push notification failed with status {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"HTTP push notification failed: {e}")
+            raise
     
     def _log_notification(self, rule_id: int, violation: Dict, message: str):
         """Log sent notification for audit trail"""

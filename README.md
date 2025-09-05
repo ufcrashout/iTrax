@@ -106,6 +106,11 @@ iTrax is a powerful, enterprise-grade web application that provides comprehensiv
 - **Geofence entry/exit alerts** for specific locations (bug-free MySQL implementation)
 - **Device activity notifications** for movement detection
 - **Multiple delivery methods** (browser, email, webhook, SMS)
+- **🌟 Browser push notifications** - Real native browser notifications that work even when tab is closed
+- **📱 Service worker integration** - Automatic registration and subscription management
+- **🔐 VAPID authentication** - Secure push notification delivery using VAPID protocol
+- **Multi-device support** - Push notifications to all user's browsers/devices
+- **Automatic cleanup** - Expired push subscriptions are automatically removed
 - **Priority-based notifications** (low, normal, high, urgent)
 - **Visual notification indicators** with color coding and animations
 - **Comprehensive notification history** with advanced filtering and pagination
@@ -173,6 +178,14 @@ iTrax is a powerful, enterprise-grade web application that provides comprehensiv
 - **Easy nickname editing** with inline forms
 - **Device identification** using original names and custom nicknames
 - **Responsive device grid** for mobile and desktop viewing
+
+### 🆕 What's New (since latest changes)
+- **Stable Place IDs & Visit History**: Locations are grouped into device-specific places with stable `place_id` values. View full visit history for a place from device analytics.
+- **Device Recording Controls**: Enable/disable future recording per device from UI; backend ingestion skips inactive devices.
+- **Bulk Location Cleanup**: Delete all location rows for a specific device from the UI.
+- **Offline Indicators**: Devices with no updates in ≥2 hours are labeled Offline on the dashboard.
+- **Playback Robustness**: Safer query handling, explicit error feedback, and content-type validation.
+- **Operational Logging**: Daily rotating traceback logs written to `logs/traceback.<YYYY-MM-DD>`.
 
 ---
 
@@ -257,6 +270,11 @@ PUT  /api/notifications/<id>/read - Mark notification as read
 PUT  /api/notifications/mark-all-read - Mark all notifications as read
 POST /api/notifications     - Create notification (testing/system)
 
+# Push Notifications
+GET  /api/push/vapid-public-key - Get VAPID public key for push subscription
+POST /api/push/subscribe    - Subscribe browser to push notifications
+POST /api/push/unsubscribe  - Unsubscribe browser from push notifications
+
 # Search & Bookmarks
 GET  /api/search           - Location search
 GET  /api/bookmarks        - Bookmark management
@@ -278,6 +296,8 @@ DEL  /api/users/<username> - Delete user
 GET  /api/devices/<device>/nickname    - Get device nickname
 PUT  /api/devices/<device>/nickname    - Set/update device nickname
 DEL  /api/devices/<device>/nickname    - Remove device nickname
+PUT  /api/devices/<device>/active      - Enable/disable future recording (admin)
+DEL  /api/devices/<device>/locations   - Delete all locations for a device (admin)
 
 # User Settings
 GET  /api/settings         - Get user preferences and settings
@@ -423,6 +443,121 @@ sudo systemctl status itrax
 
 ---
 
+## 📱 Push Notifications Setup
+
+iTrax supports native browser push notifications that work even when the browser tab is closed. These notifications appear as system notifications on desktop and mobile devices.
+
+### 🔧 Prerequisites for Push Notifications
+
+1. **HTTPS Required**: Push notifications only work over HTTPS (except localhost for development)
+2. **Modern Browser**: Chrome 42+, Firefox 44+, Safari 16+, Edge 17+
+3. **Python Package**: `pywebpush` library for sending notifications
+
+### 📋 Setup Steps
+
+#### 1. Install Push Notification Dependencies
+```bash
+pip install pywebpush
+```
+
+#### 2. Generate VAPID Keys
+VAPID (Voluntary Application Server Identification) keys are required for secure push notifications.
+
+**Option A: Using Python**
+```bash
+python -c "from pywebpush import vapid_keys_generate; keys = vapid_keys_generate(); print('VAPID_PUBLIC_KEY=' + keys['public_key']); print('VAPID_PRIVATE_KEY=' + keys['private_key'])"
+```
+
+**Option B: Online Generator**
+Visit: https://web-push-codelab.glitch.me/
+
+#### 3. Configure Environment Variables
+Add the generated keys to your `.env` file:
+```env
+# Push Notifications
+VAPID_PUBLIC_KEY=BEl62iUYgUivxIkv69yViEuiBIa40HI0DLI5kz5Fs0cEiw7MrKp9t0pNDhLRCb7cWfpVRYvx3VfP-J3LNlLBxL4
+VAPID_PRIVATE_KEY=-----BEGIN EC PRIVATE KEY-----
+[your-private-key-content]
+-----END EC PRIVATE KEY-----
+```
+
+#### 4. Enable HTTPS (Production)
+For production deployment, ensure your application runs over HTTPS:
+```bash
+# Using nginx with SSL certificate
+sudo nano /etc/nginx/sites-available/itrax
+
+# Or use a reverse proxy service like Cloudflare
+```
+
+### 🚀 How It Works
+
+1. **Automatic Registration**: Service worker registers automatically when users visit any page
+2. **Permission Request**: Users are prompted once to allow notifications
+3. **Subscription Storage**: Browser push subscription is saved to database
+4. **Notification Delivery**: When geofence events occur, push notifications are sent to all user's devices
+5. **Multi-Device Support**: Each browser/device gets its own subscription
+
+### ⚙️ Configuration
+
+#### Enable Push Notifications in Notification Rules
+1. Go to **Notifications** page in the web interface
+2. Create or edit a notification rule
+3. Check "**In-Browser Notifications**" option
+4. Geofence events will now trigger both in-app and push notifications
+
+#### Notification Features
+- **Native System Notifications**: Appear as system notifications
+- **Click Actions**: Click to open app or view details
+- **Offline Support**: Work even when browser is closed
+- **Auto-Cleanup**: Old subscriptions are automatically removed after 90 days
+
+### 🔍 Troubleshooting
+
+#### No Permission Prompt
+- Ensure HTTPS is enabled (required for push notifications)
+- Check if notifications are blocked in browser settings
+- Clear browser cache and reload the page
+
+#### No Push Notifications Received
+- Verify VAPID keys are correctly set in environment variables
+- Check browser console for service worker registration errors
+- Ensure notification rules have "browser" method enabled
+- Test with browser developer tools open to see error messages
+
+#### Permission Denied
+- Guide users to manually enable notifications in browser settings:
+  - **Chrome**: Settings → Privacy → Site Settings → Notifications
+  - **Firefox**: Settings → Privacy → Permissions → Notifications
+  - **Safari**: Preferences → Websites → Notifications
+
+### 🔒 Security Notes
+
+- **VAPID Keys**: Keep private key secure and never commit to version control
+- **HTTPS Only**: Push notifications require HTTPS in production
+- **User Consent**: Users must explicitly grant notification permission
+- **Automatic Cleanup**: Invalid/expired subscriptions are automatically removed
+
+### 🧪 Testing Push Notifications
+
+1. **Development Testing**:
+   ```bash
+   # Start application (works on localhost without HTTPS)
+   python app.py
+   ```
+
+2. **Create Test Notification**:
+   - Set up a geofence around your current location
+   - Create notification rule with "In-Browser Notifications" enabled
+   - Move device in/out of geofence to trigger notification
+
+3. **Browser Developer Tools**:
+   - Open DevTools → Application → Service Workers
+   - Verify service worker is registered and active
+   - Check Console for any error messages
+
+---
+
 ## 🔧 Database Management
 
 iTrax uses MySQL/MariaDB for robust, enterprise-grade data storage with comprehensive management tools.
@@ -465,6 +600,7 @@ python database_tools.py revoke-admin --username john        # Revoke admin
 | `device_geofence_status` | Geofence entry/exit status | `device_name`, `geofence_id`, `is_inside` |
 | `notification_rules` | Alert configurations | `id`, `name`, `trigger_type`, `delivery_method` |
 | `notifications` | Notification history | `id`, `rule_id`, `message`, `delivered_at` |
+| `push_subscriptions` | Browser push subscriptions | `id`, `user_id`, `endpoint`, `p256dh`, `auth` |
 | `bookmarks` | Saved locations | `id`, `name`, `latitude`, `longitude`, `description` |
 | `address_cache` | Geocoded address cache | `latitude`, `longitude`, `address`, `cached_at` |
 
@@ -503,6 +639,8 @@ The database includes optimized indexes for high-performance queries:
 | `DB_USER` | MySQL user | `root` | `itrax_user` |
 | `DB_PASSWORD` | MySQL password | Required | `db_password` |
 | `DB_NAME` | MySQL database name | `itrax` | `location_db` |
+| `VAPID_PUBLIC_KEY` | Push notification public key | Auto-generated | `BEl62iU...` |
+| `VAPID_PRIVATE_KEY` | Push notification private key | Required for push | `-----BEGIN...` |
 
 ### 📱 Device Configuration
 
@@ -800,7 +938,8 @@ iTrax/
 - **Backend**: Python 3.8+, Flask 2.0+, Flask-Compress, Flask-Limiter
 - **Database**: MySQL 8.0+ / MariaDB 10.5+ with advanced indexing
 - **Caching**: Multi-level caching with PerformanceCache class
-- **Frontend**: HTML5, CSS3, JavaScript (ES6+) with performance optimization
+- **Frontend**: HTML5, CSS3, JavaScript (ES6+) with Service Worker support
+- **Push Notifications**: PyWebPush with VAPID authentication for browser notifications
 - **Mapping**: Leaflet.js with OpenStreetMap and Canvas rendering
 - **Charts**: Chart.js for analytics visualization
 - **Styling**: Bootstrap 5 for responsive design with mobile-first approach
@@ -809,7 +948,7 @@ iTrax/
 - **Rate Limiting**: Flask-Limiter with Redis support
 - **Geocoding**: Multi-provider geocoding (Nominatim, Google, MapBox, Here, ArcGIS)
 - **Timezone**: PyTZ with comprehensive timezone support
-- **Notifications**: SMTP, Webhooks with real-time updates
+- **Notifications**: SMTP, Webhooks, Browser Push Notifications with real-time updates
 - **CI/CD**: GitHub Actions for automated testing and code quality
 
 ---

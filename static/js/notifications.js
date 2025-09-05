@@ -5,10 +5,15 @@ class NotificationSystem {
     constructor() {
         this.notificationCount = 0;
         this.csrf_token = document.querySelector('meta[name=csrf-token]')?.getAttribute('content');
+        this.pushSupported = false;
+        this.serviceWorkerRegistration = null;
         this.init();
     }
 
-    init() {
+    async init() {
+        // Initialize push notifications
+        await this.initializePushNotifications();
+        
         // Load initial notification count
         this.loadNotificationCount();
         
@@ -17,6 +22,115 @@ class NotificationSystem {
         
         // Poll for new notifications every 30 seconds
         setInterval(() => this.loadNotificationCount(), 30000);
+    }
+
+    async initializePushNotifications() {
+        // Check if service workers and push notifications are supported
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+            try {
+                // Register service worker
+                const registration = await navigator.serviceWorker.register('/static/sw.js');
+                this.serviceWorkerRegistration = registration;
+                this.pushSupported = true;
+                console.log('Service Worker registered:', registration);
+
+                // Request notification permission if not already granted
+                if (Notification.permission === 'default') {
+                    await this.requestNotificationPermission();
+                }
+
+                // Subscribe to push notifications if permission is granted
+                if (Notification.permission === 'granted') {
+                    await this.subscribeToPush();
+                }
+            } catch (error) {
+                console.error('Service Worker registration failed:', error);
+            }
+        } else {
+            console.log('Push notifications not supported');
+        }
+    }
+
+    async requestNotificationPermission() {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+            console.log('Notification permission granted');
+            return true;
+        } else {
+            console.log('Notification permission denied');
+            return false;
+        }
+    }
+
+    async subscribeToPush() {
+        try {
+            // Check if already subscribed
+            const existingSubscription = await this.serviceWorkerRegistration.pushManager.getSubscription();
+            if (existingSubscription) {
+                console.log('Already subscribed to push notifications');
+                return;
+            }
+
+            // Subscribe to push notifications
+            const subscription = await this.serviceWorkerRegistration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: this.urlBase64ToUint8Array(await this.getVAPIDPublicKey())
+            });
+
+            // Send subscription to server
+            await this.sendSubscriptionToServer(subscription);
+            console.log('Subscribed to push notifications:', subscription);
+        } catch (error) {
+            console.error('Failed to subscribe to push notifications:', error);
+        }
+    }
+
+    async getVAPIDPublicKey() {
+        try {
+            const response = await fetch('/api/push/vapid-public-key');
+            const data = await response.json();
+            return data.publicKey;
+        } catch (error) {
+            console.error('Failed to get VAPID public key:', error);
+            // Fallback VAPID key (you should generate your own)
+            return 'BEl62iUYgUivxIkv69yViEuiBIa40HI0DLI5kz5Fs0cEiw7MrKp9t0pNDhLRCb7cWfpVRYvx3VfP-J3LNlLBxL4';
+        }
+    }
+
+    async sendSubscriptionToServer(subscription) {
+        try {
+            const response = await fetch('/api/push/subscribe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': this.csrf_token
+                },
+                body: JSON.stringify({
+                    subscription: subscription.toJSON()
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to send subscription to server');
+            }
+        } catch (error) {
+            console.error('Error sending subscription to server:', error);
+        }
+    }
+
+    urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding)
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
+
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
     }
 
     setupEventListeners() {
@@ -215,6 +329,6 @@ function loadAllNotifications() {
 }
 
 // Initialize notification system when DOM is ready
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     window.notificationSystem = new NotificationSystem();
 });

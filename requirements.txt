@@ -13,4 +13,4 @@ folium
 requests
 schedule==1.2.0
 PyMySQL==1.1.1
-mysqlclient==2.2.0 
+mysqlclient==2.2.0 pywebpush

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Visits - {{ device_name }}{% endblock %}
+
+{% block content %}
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="mb-1"><i class="fas fa-map-marker-alt me-2"></i>Visits for {{ device_name }}</h5>
+                            <div class="text-muted small">
+                                {{ place.address }}<br>
+                                {{ '%.6f'|format(place.latitude) }}, {{ '%.6f'|format(place.longitude) }}
+                            </div>
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <a class="btn btn-outline-primary me-2" target="_blank"
+                               href="https://www.google.com/maps?q={{ place.latitude }},{{ place.longitude }}">
+                                <i class="fas fa-location-arrow me-1"></i>Open in Google Maps
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center mb-3">
+                            <div class="col-sm-4 mb-2">
+                                <div class="fw-bold">Total Visits</div>
+                                <div class="fs-5">{{ total_visits }}</div>
+                            </div>
+                            <div class="col-sm-4 mb-2">
+                                <div class="fw-bold">Total Time</div>
+                                <div class="fs-5">{{ (total_minutes/60)|round(1) }}h</div>
+                            </div>
+                            <div class="col-sm-4 mb-2">
+                                <div class="fw-bold">First / Last</div>
+                                <div class="small">{{ first_visit | user_timezone }} → {{ last_visit | user_timezone }}</div>
+                            </div>
+                        </div>
+
+                        {% if visits %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Arrival</th>
+                                        <th>Departure</th>
+                                        <th>Duration</th>
+                                        <th>Points</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for v in visits %}
+                                    <tr>
+                                        <td>{{ loop.index }}</td>
+                                        <td>{{ v.arrival | user_timezone }}</td>
+                                        <td>{{ v.departure | user_timezone }}</td>
+                                        <td>
+                                            {% if v.duration_minutes < 60 %}
+                                                {{ v.duration_minutes }}m
+                                            {% else %}
+                                                {{ (v.duration_minutes/60)|round(1) }}h
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ v.points }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="text-center text-muted py-4">
+                            <i class="fas fa-info-circle fa-2x mb-2"></i>
+                            <p>No visits found for this location.</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+{% endblock %}
+
+

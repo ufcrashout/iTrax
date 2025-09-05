@@ -251,8 +251,27 @@
             document.getElementById('loading').style.display = 'flex';
             
             try {
-                const response = await fetch(`/api/playback/data?device=${device}&start_date=${startDate}&end_date=${endDate}`);
-                const data = await response.json();
+                const params = new URLSearchParams();
+                if (device) params.set('device', device);
+                if (startDate) params.set('start_date', startDate);
+                if (endDate) params.set('end_date', endDate);
+                const response = await fetch(`/api/playback/data?${params.toString()}`);
+                if (!response.ok) {
+                    const txt = await response.text();
+                    console.error('Playback API non-OK:', response.status, txt);
+                    alert('Failed to load playback data');
+                    return;
+                }
+                let data;
+                const ct = response.headers.get('content-type') || '';
+                if (ct.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    const txt = await response.text();
+                    console.error('Playback API returned non-JSON:', txt);
+                    alert('Failed to load playback data');
+                    return;
+                }
                 
                 if (data.error) {
                     alert('Error: ' + data.error);

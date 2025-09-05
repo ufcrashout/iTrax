@@ -2,7 +2,7 @@ import pymysql
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from config import Config
@@ -335,6 +335,22 @@ class Database:
                     INDEX idx_next_update (next_update),
                     UNIQUE KEY unique_location (device_name, cache_type, ranking)
                 ) ENGINE=InnoDB""")
+
+                # Device-specific places (stable place IDs per device and location)
+                cursor.execute("""CREATE TABLE IF NOT EXISTS device_location_places (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    device_name VARCHAR(255) NOT NULL,
+                    address TEXT NOT NULL,
+                    latitude DECIMAL(10,8) NOT NULL,
+                    longitude DECIMAL(11,8) NOT NULL,
+                    lat_rounded DECIMAL(10,4) NOT NULL,
+                    lng_rounded DECIMAL(11,4) NOT NULL,
+                    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_device_place (device_name, lat_rounded, lng_rounded),
+                    INDEX idx_device (device_name),
+                    INDEX idx_coords (lat_rounded, lng_rounded)
+                ) ENGINE=InnoDB""")
                 
                 # Add nickname column to devices table if it doesn't exist
                 try:
@@ -346,6 +362,24 @@ class Database:
                     # Column may already exist, that's okay
                     logger.debug(f"Nickname column may already exist: {e}")
                     
+                # Push subscriptions table for browser push notifications
+                cursor.execute("""CREATE TABLE IF NOT EXISTS push_subscriptions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT,
+                    endpoint TEXT NOT NULL,
+                    p256dh TEXT NOT NULL,
+                    auth TEXT NOT NULL,
+                    user_agent TEXT,
+                    ip_address VARCHAR(45),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_used TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    INDEX idx_user_id (user_id),
+                    INDEX idx_active (is_active),
+                    INDEX idx_endpoint (endpoint(255)),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB""")
+
                 # Basic table optimization (removed problematic buffer pool setting)
                 try:
                     cursor.execute("ALTER TABLE locations ENGINE=InnoDB")
@@ -369,10 +403,12 @@ class Database:
                 
                 # Use bulk operations for better performance
                 device_updates = []
+                device_names = set()
                 
                 for location in location_data:
                     device_name = location['device_name']
                     timestamp = location['timestamp']
+                    device_names.add(device_name)
                     
                     # Convert timestamp to MySQL-compatible format
                     mysql_timestamp = self._convert_timestamp_for_mysql(timestamp)
@@ -390,11 +426,27 @@ class Database:
                     
                 logger.debug(f"Processed {len(device_updates)} device updates")
                 
+                # Fetch active status for devices to decide recording behavior
+                active_map = {}
+                if device_names:
+                    placeholders = ','.join(['%s'] * len(device_names))
+                    cursor.execute(f"""
+                        SELECT device_name, is_active
+                        FROM devices
+                        WHERE device_name IN ({placeholders})
+                    """, tuple(device_names))
+                    for row in cursor.fetchall():
+                        active_map[row['device_name']] = bool(row.get('is_active', True))
+                
                 # Bulk insert locations - fixed parameter mapping with timestamp conversion
                 location_inserts = []
                 for location in location_data:
                     device_name = location['device_name']
                     mysql_timestamp = self._convert_timestamp_for_mysql(location['timestamp'])
+                    
+                    # Skip recording for devices explicitly marked inactive
+                    if device_name in active_map and active_map[device_name] is False:
+                        continue
                     
                     location_inserts.append((
                         device_name,  # for device_id subquery
@@ -407,16 +459,17 @@ class Database:
                         location.get('is_charging', False)
                     ))
                 
-                cursor.executemany("""
-                    INSERT INTO locations (device_id, device_name, latitude, longitude, timestamp, accuracy, battery_level, is_charging)
-                    VALUES (
-                        (SELECT id FROM devices WHERE device_name = %s LIMIT 1),
-                        %s, %s, %s, %s, %s, %s, %s
-                    )
-                """, location_inserts)
+                if location_inserts:
+                    cursor.executemany("""
+                        INSERT INTO locations (device_id, device_name, latitude, longitude, timestamp, accuracy, battery_level, is_charging)
+                        VALUES (
+                            (SELECT id FROM devices WHERE device_name = %s LIMIT 1),
+                            %s, %s, %s, %s, %s, %s, %s
+                        )
+                    """, location_inserts)
                 
                 conn.commit()
-                logger.info(f"Saved {len(location_data)} location records to database")
+                logger.info(f"Saved {len(location_inserts)} location records to database (filtered by device activity status)")
                 
                 # Log some details for verification
                 for location in location_data[:3]:  # Log first 3 for debugging
@@ -430,6 +483,34 @@ class Database:
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
+
+    def update_device_active(self, device_name: str, is_active: bool) -> bool:
+        """Enable/disable recording for a device (is_active flag)."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO devices (device_name, is_active)
+                    VALUES (%s, %s)
+                    ON DUPLICATE KEY UPDATE is_active = VALUES(is_active)
+                """, (device_name, bool(is_active)))
+                return True
+        except Exception as e:
+            logger.error(f"Failed to update device active status for {device_name}: {e}")
+            return False
+
+    def delete_device_locations(self, device_name: str) -> int:
+        """Delete all location rows for a specific device. Returns deleted count."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM locations WHERE device_name = %s", (device_name,))
+                deleted = cursor.rowcount
+                logger.info(f"Deleted {deleted} locations for device {device_name}")
+                return deleted
+        except Exception as e:
+            logger.error(f"Failed to delete locations for {device_name}: {e}")
+            return 0
     
     @cached_query(location_cache, ttl=180)  # Cache for 3 minutes
     def get_locations(self, start_time: Optional[str] = None, 
@@ -1217,6 +1298,102 @@ class Database:
             logger.error(f"Failed to cleanup old notifications: {e}")
             return 0
     
+    # Push notification subscription methods
+    def save_push_subscription(self, user_id: int, subscription: Dict, user_agent: str = None, ip_address: str = None) -> bool:
+        """Save or update a push notification subscription"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # First, deactivate any existing subscriptions for the same endpoint
+                cursor.execute("""
+                    UPDATE push_subscriptions 
+                    SET is_active = FALSE 
+                    WHERE endpoint = %s
+                """, (subscription['endpoint'],))
+                
+                # Insert new subscription
+                cursor.execute("""
+                    INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, ip_address, is_active)
+                    VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                """, (
+                    user_id,
+                    subscription['endpoint'],
+                    subscription['keys']['p256dh'],
+                    subscription['keys']['auth'],
+                    user_agent,
+                    ip_address
+                ))
+                
+                logger.info(f"Saved push subscription for user {user_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Failed to save push subscription: {e}")
+            return False
+    
+    def get_active_push_subscriptions(self, user_id: int = None) -> List[Dict]:
+        """Get active push subscriptions for a user or all users"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                if user_id:
+                    cursor.execute("""
+                        SELECT id, user_id, endpoint, p256dh, auth, created_at, last_used
+                        FROM push_subscriptions
+                        WHERE user_id = %s AND is_active = TRUE
+                        ORDER BY created_at DESC
+                    """, (user_id,))
+                else:
+                    cursor.execute("""
+                        SELECT id, user_id, endpoint, p256dh, auth, created_at, last_used
+                        FROM push_subscriptions
+                        WHERE is_active = TRUE
+                        ORDER BY created_at DESC
+                    """)
+                
+                return cursor.fetchall()
+                
+        except Exception as e:
+            logger.error(f"Failed to get push subscriptions: {e}")
+            return []
+    
+    def remove_push_subscription(self, endpoint: str) -> bool:
+        """Remove/deactivate a push subscription"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE push_subscriptions 
+                    SET is_active = FALSE 
+                    WHERE endpoint = %s
+                """, (endpoint,))
+                
+                return cursor.rowcount > 0
+                
+        except Exception as e:
+            logger.error(f"Failed to remove push subscription: {e}")
+            return False
+    
+    def cleanup_old_push_subscriptions(self, days: int = 90) -> int:
+        """Clean up old inactive push subscriptions"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    DELETE FROM push_subscriptions 
+                    WHERE is_active = FALSE AND last_used < DATE_SUB(NOW(), INTERVAL %s DAY)
+                """, (days,))
+                count = cursor.rowcount
+                if count > 0:
+                    logger.info(f"Cleaned up {count} old push subscriptions")
+                return count
+                
+        except Exception as e:
+            logger.error(f"Failed to cleanup old push subscriptions: {e}")
+            return 0
+    
     def get_user_settings(self, username: str) -> Dict:
         """Get user settings, creating defaults if none exist"""
         try:
@@ -1402,50 +1579,20 @@ class Database:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
-                # Start with the simplest possible query first
-                logger.info("Attempting fast device query...")
+                # Accurate device stats with nickname, counts and last location
                 cursor.execute("""
-                    SELECT device_name,
-                           NULL as nickname,
-                           device_name as display_name,
-                           0 as location_count,
-                           NULL as last_location
-                    FROM (
-                        SELECT DISTINCT device_name
-                        FROM locations
-                        ORDER BY device_name
-                        LIMIT 20
-                    ) devices
+                    SELECT d.device_name,
+                           d.nickname,
+                           COALESCE(d.nickname, d.device_name) AS display_name,
+                           COALESCE(COUNT(l.id), 0) AS location_count,
+                           MAX(l.timestamp) AS last_location,
+                           COALESCE(d.is_active, TRUE) AS is_active
+                    FROM devices d
+                    LEFT JOIN locations l ON l.device_name = d.device_name
+                    GROUP BY d.device_name, d.nickname, d.is_active
+                    ORDER BY display_name
                 """)
                 devices = cursor.fetchall()
-                
-                # If we have devices, try to get nicknames for them
-                if devices:
-                    # Check if devices table exists
-                    cursor.execute("SHOW TABLES LIKE 'devices'")
-                    devices_table_exists = cursor.fetchone() is not None
-                    
-                    if devices_table_exists:
-                        logger.info("Getting nicknames for devices...")
-                        # Get nicknames for the devices we found
-                        device_names = [d['device_name'] for d in devices]
-                        placeholders = ','.join(['%s'] * len(device_names))
-                        cursor.execute(f"""
-                            SELECT device_name, nickname
-                            FROM devices
-                            WHERE device_name IN ({placeholders})
-                        """, device_names)
-                        
-                        nicknames = {row['device_name']: row['nickname'] for row in cursor.fetchall()}
-                        
-                        # Update devices with nicknames
-                        for device in devices:
-                            device_name = device['device_name']
-                            if device_name in nicknames and nicknames[device_name]:
-                                device['nickname'] = nicknames[device_name]
-                                device['display_name'] = nicknames[device_name]
-                
                 logger.info(f"Successfully loaded {len(devices)} devices")
                 return devices
                 
@@ -1523,6 +1670,121 @@ class Database:
         except Exception as e:
             logger.error(f"Failed to cache address for {latitude}, {longitude}: {e}")
             return False
+
+    def get_or_create_place_id(self, device_name: str, latitude: float, longitude: float, address: str) -> Optional[int]:
+        """Get stable place_id for a device and location (rounded coords), creating if needed."""
+        try:
+            lat_rounded = round(float(latitude), 4)
+            lng_rounded = round(float(longitude), 4)
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Try to find existing place
+                cursor.execute(
+                    """
+                    SELECT id FROM device_location_places
+                    WHERE device_name = %s AND lat_rounded = %s AND lng_rounded = %s
+                    """,
+                    (device_name, lat_rounded, lng_rounded)
+                )
+                row = cursor.fetchone()
+                if row:
+                    # Update last_seen
+                    cursor.execute(
+                        """
+                        UPDATE device_location_places
+                        SET last_seen = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        """,
+                        (row['id'],)
+                    )
+                    return row['id']
+
+                # Insert new place
+                cursor.execute(
+                    """
+                    INSERT INTO device_location_places
+                    (device_name, address, latitude, longitude, lat_rounded, lng_rounded)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (device_name, address, float(latitude), float(longitude), lat_rounded, lng_rounded)
+                )
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error(f"Failed to get/create place id: {e}")
+            return None
+
+    def get_visits_for_place(self, device_name: str, place_id: int, days: int = None) -> List[Dict]:
+        """Return all visits for a given device/place based on rounded coordinate grouping."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Get place info
+                cursor.execute(
+                    "SELECT * FROM device_location_places WHERE id = %s AND device_name = %s",
+                    (place_id, device_name)
+                )
+                place = cursor.fetchone()
+                if not place:
+                    return []
+
+                params = [device_name, place['lat_rounded'], place['lng_rounded']]
+                date_clause = ""
+                if days and isinstance(days, int) and days > 0:
+                    date_clause = " AND l.timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+                    params.append(days)
+
+                # Pull relevant points (rounded match)
+                cursor.execute(
+                    f"""
+                    SELECT l.id, l.latitude, l.longitude, l.timestamp
+                    FROM locations l
+                    WHERE l.device_name = %s
+                      AND ROUND(l.latitude, 4) = %s
+                      AND ROUND(l.longitude, 4) = %s
+                      {date_clause}
+                    ORDER BY l.timestamp ASC
+                    """,
+                    params
+                )
+                rows = cursor.fetchall()
+                if not rows:
+                    return []
+
+                # Build visits by session gaps (>30m new visit)
+                visits = []
+                session_start = rows[0]['timestamp']
+                last_time = rows[0]['timestamp']
+                point_count = 1
+                for r in rows[1:]:
+                    curr_time = r['timestamp']
+                    gap_min = (curr_time - last_time).total_seconds() / 60.0
+                    if gap_min > 30:
+                        duration_min = max(5, (last_time - session_start).total_seconds() / 60.0)
+                        visits.append({
+                            'arrival': session_start,
+                            'departure': last_time,
+                            'duration_minutes': round(duration_min),
+                            'points': point_count
+                        })
+                        session_start = curr_time
+                        point_count = 1
+                    else:
+                        point_count += 1
+                    last_time = curr_time
+
+                # Close last session
+                duration_min = max(5, (last_time - session_start).total_seconds() / 60.0)
+                visits.append({
+                    'arrival': session_start,
+                    'departure': last_time,
+                    'duration_minutes': round(duration_min),
+                    'points': point_count
+                })
+
+                return visits
+        except Exception as e:
+            logger.error(f"Failed to get visits for place: {e}")
+            return []
     
     def cleanup_expired_addresses(self) -> int:
         """Remove expired address cache entries and return count of deleted entries"""

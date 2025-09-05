@@ -12,6 +12,7 @@ except ImportError:
 import json
 import os
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import pytz
 import pymysql
 from datetime import datetime, timedelta
@@ -42,6 +43,23 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Ensure daily traceback logging to logs/traceback.<YYYY-MM-DD>
+try:
+    os.makedirs('logs', exist_ok=True)
+    traceback_handler = TimedRotatingFileHandler(
+        filename=os.path.join('logs', 'traceback'),
+        when='midnight',
+        interval=1,
+        backupCount=14,
+        encoding='utf-8'
+    )
+    traceback_handler.suffix = "%Y-%m-%d"
+    traceback_handler.setLevel(logging.ERROR)
+    traceback_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logging.getLogger().addHandler(traceback_handler)
+except Exception as _e:
+    logger.warning(f"Failed to initialize traceback daily logger: {_e}")
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -507,7 +525,7 @@ def dashboard():
                 flash('Invalid date format. Please select a valid date.', 'error')
                 location_history = []
 
-        # Get list of available devices for filter dropdown (with display names)
+        # Get list of available devices for filter dropdown (only active devices, with display names)
         available_devices = []
         try:
             with db.get_connection() as conn:
@@ -518,6 +536,7 @@ def dashboard():
                     FROM locations l
                     LEFT JOIN devices d ON l.device_name = d.device_name
                     WHERE l.device_name IS NOT NULL AND l.device_name != ''
+                      AND (d.is_active IS NULL OR d.is_active = TRUE)
                     ORDER BY display_name
                 ''')
                 rows = cursor.fetchall()
@@ -528,18 +547,46 @@ def dashboard():
         except Exception as e:
             logger.error(f"Error getting device list: {e}")
 
-        # Ensure JSON-serializable location objects for the template
+        # Ensure JSON-serializable location objects for the template, filter inactive devices
         safe_locations = [serialize_location_row(row) for row in (location_history or [])]
+        try:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT device_name FROM devices WHERE is_active = FALSE")
+                inactive = {row['device_name'] for row in cursor.fetchall()}
+        except Exception:
+            inactive = set()
+        if inactive:
+            safe_locations = [loc for loc in safe_locations if loc.get('device_name') not in inactive]
 
         # Get statistics for dashboard display
         stats = db.get_statistics()
+        # Determine offline devices (no recent update in last 2 hours)
+        offline_devices = set()
+        try:
+            if stats and stats.get('devices'):
+                now = datetime.now()
+                for d in stats['devices']:
+                    last_seen = d.get('last_seen')
+                    name = d.get('device_name')
+                    if last_seen and name:
+                        try:
+                            last_dt = last_seen if isinstance(last_seen, datetime) else datetime.fromisoformat(str(last_seen).replace('Z', '+00:00'))
+                            age_hours = (now - last_dt).total_seconds() / 3600.0
+                            if age_hours >= 2.0:
+                                offline_devices.add(name)
+                        except Exception:
+                            pass
+        except Exception as _e:
+            logger.debug(f"offline_devices compute error: {_e}")
         
         return render_template('dashboard.html', 
                              location_history=safe_locations,
                              available_devices=available_devices,
                              selected_date=selected_date,
                              selected_device=device_name,
-                             stats=stats)
+                             stats=stats,
+                             offline_devices=offline_devices)
     
     except Exception as e:
         logger.error(f"Error loading dashboard: {e}")
@@ -761,6 +808,45 @@ def device_analytics(device_name):
         flash('An error occurred while loading device analytics.', 'error')
         return redirect(url_for('analytics_dashboard'))
 
+@app.route('/analytics/<device_name>/place/<int:place_id>')
+@login_required
+def view_place_visits(device_name, place_id):
+    """View all visits for a specific device/place (stable place_id)."""
+    try:
+        # Pull visits
+        visits = db.get_visits_for_place(device_name, place_id)
+        # Get place info
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM device_location_places WHERE id = %s AND device_name = %s",
+                (place_id, device_name)
+            )
+            place = cursor.fetchone()
+        if not place:
+            flash('Place not found.', 'error')
+            return redirect(url_for('analytics_dashboard'))
+
+        # Aggregate summary
+        total_visits = len(visits)
+        total_minutes = sum(v['duration_minutes'] for v in visits) if visits else 0
+        first_visit = visits[0]['arrival'] if visits else None
+        last_visit = visits[-1]['departure'] if visits else None
+
+        return render_template('location_visits.html',
+                             device_name=device_name,
+                             place=place,
+                             place_id=place_id,
+                             visits=visits,
+                             total_visits=total_visits,
+                             total_minutes=total_minutes,
+                             first_visit=first_visit,
+                             last_visit=last_visit)
+    except Exception as e:
+        logger.error(f"Error viewing place visits: {e}")
+        flash('An error occurred while loading visits for this place.', 'error')
+        return redirect(url_for('analytics_dashboard'))
+
 @app.route('/export/<device_name>')
 @login_required
 @limiter.limit("5 per minute")
@@ -917,6 +1003,9 @@ def api_playback_data():
     """API endpoint for historical playback data"""
     try:
         device_name = request.args.get('device', None)
+        # Normalize empty device to None (treat as all devices)
+        if device_name == '':
+            device_name = None
         start_date = request.args.get('start_date', None)
         end_date = request.args.get('end_date', None)
         
@@ -2332,6 +2421,107 @@ def api_create_notification():
             'error': 'Failed to create notification'
         }), 500
 
+# Service Worker Route
+@app.route('/static/sw.js')
+def serve_service_worker():
+    """Serve the service worker with proper headers"""
+    response = app.send_static_file('sw.js')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
+
+# Push Notification API Endpoints
+@app.route('/api/push/vapid-public-key', methods=['GET'])
+@login_required
+def api_get_vapid_public_key():
+    """Get VAPID public key for push notifications"""
+    try:
+        # Generate or get VAPID keys - for production, store these securely
+        public_key = os.getenv('VAPID_PUBLIC_KEY', 'BEl62iUYgUivxIkv69yViEuiBIa40HI0DLI5kz5Fs0cEiw7MrKp9t0pNDhLRCb7cWfpVRYvx3VfP-J3LNlLBxL4')
+        return jsonify({
+            'success': True,
+            'publicKey': public_key
+        })
+    except Exception as e:
+        logger.error(f"Error getting VAPID public key: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to get VAPID public key'
+        }), 500
+
+@app.route('/api/push/subscribe', methods=['POST'])
+@login_required
+def api_push_subscribe():
+    """Subscribe to push notifications"""
+    try:
+        data = request.get_json()
+        subscription = data.get('subscription')
+        
+        if not subscription or 'endpoint' not in subscription:
+            return jsonify({
+                'success': False,
+                'error': 'Invalid subscription data'
+            }), 400
+        
+        # Get current user ID
+        user_id = current_user.id
+        user_agent = request.headers.get('User-Agent', '')
+        ip_address = request.remote_addr
+        
+        # Save subscription to database
+        if db.save_push_subscription(user_id, subscription, user_agent, ip_address):
+            return jsonify({
+                'success': True,
+                'message': 'Push subscription saved successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to save push subscription'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error saving push subscription: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to save push subscription'
+        }), 500
+
+@app.route('/api/push/unsubscribe', methods=['POST'])
+@login_required
+def api_push_unsubscribe():
+    """Unsubscribe from push notifications"""
+    try:
+        data = request.get_json()
+        endpoint = data.get('endpoint')
+        
+        if not endpoint:
+            return jsonify({
+                'success': False,
+                'error': 'Endpoint is required'
+            }), 400
+        
+        # Remove subscription from database
+        if db.remove_push_subscription(endpoint):
+            return jsonify({
+                'success': True,
+                'message': 'Push subscription removed successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to remove push subscription'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error removing push subscription: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to remove push subscription'
+        }), 500
+
 # Device Nickname Management API Endpoints
 @app.route('/api/devices/nicknames', methods=['GET'])
 @login_required
@@ -2409,6 +2599,33 @@ def api_remove_device_nickname(device_name):
             'error': 'Failed to remove device nickname'
         }), 500
 
+@app.route('/api/devices/<device_name>/active', methods=['PUT'])
+@login_required
+@admin_required
+def api_set_device_active(device_name):
+    """Enable or disable future recording for a device."""
+    try:
+        data = request.get_json() or {}
+        is_active = bool(data.get('is_active', True))
+        if db.update_device_active(device_name, is_active):
+            return jsonify({'success': True, 'message': f"Recording {'enabled' if is_active else 'disabled'} for {device_name}"})
+        return jsonify({'success': False, 'error': 'Failed to update device status'}), 500
+    except Exception as e:
+        logger.error(f"Error updating device active status: {e}")
+        return jsonify({'success': False, 'error': 'Server error'}), 500
+
+@app.route('/api/devices/<device_name>/locations', methods=['DELETE'])
+@login_required
+@admin_required
+def api_delete_device_locations(device_name):
+    """Delete all location rows for a specific device."""
+    try:
+        deleted = db.delete_device_locations(device_name)
+        return jsonify({'success': True, 'deleted': deleted})
+    except Exception as e:
+        logger.error(f"Error deleting locations for device {device_name}: {e}")
+        return jsonify({'success': False, 'error': 'Failed to delete locations'}), 500
+
 @app.route('/device-management')
 @login_required
 def device_management():
@@ -2417,8 +2634,7 @@ def device_management():
         logger.info("Loading device management page...")
         devices = db.get_all_devices_with_nicknames()
         logger.info(f"Device management loaded with {len(devices)} devices")
-        csrf_token = generate_csrf()
-        return render_template('device_management.html', devices=devices, csrf_token=csrf_token)
+        return render_template('device_management.html', devices=devices)
     except Exception as e:
         logger.error(f"Error loading device management page: {e}")
         import traceback

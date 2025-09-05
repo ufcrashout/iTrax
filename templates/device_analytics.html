@@ -238,9 +238,19 @@
                                             <span class="badge bg-primary">{{ loop.index }}</span>
                                         </td>
                                         <td>
-                                            <div class="fw-bold text-truncate" style="max-width: 200px;" title="{{ location.address }}">
-                                                <i class="fas fa-map-marker-alt me-1 text-primary"></i>
-                                                {{ location.address }}
+                                            <div class="d-flex align-items-start justify-content-between">
+                                                <div class="fw-bold text-truncate me-2" style="max-width: 200px;" title="{{ location.address }}">
+                                                    <i class="fas fa-map-marker-alt me-1 text-primary"></i>
+                                                    {% if location.place_id %}
+                                                        <a href="{{ url_for('view_place_visits', device_name=device_name, place_id=location.place_id) }}" class="text-decoration-none">{{ location.address }}</a>
+                                                    {% else %}
+                                                        {{ location.address }}
+                                                    {% endif %}
+                                                </div>
+                                                <button class="btn btn-sm btn-outline-primary" title="Open in Google Maps"
+                                                        onclick="openInGoogleMaps({{ location.latitude }}, {{ location.longitude }}, '{{ location.address | replace("'", "\'") }}')">
+                                                    <i class="fas fa-location-arrow"></i>
+                                                </button>
                                             </div>
                                             <small class="text-muted">{{ location.total_points }} GPS points</small>
                                             <div class="mt-1">
@@ -333,9 +343,19 @@
                                             <span class="badge bg-success">{{ loop.index }}</span>
                                         </td>
                                         <td>
-                                            <div class="fw-bold text-truncate" style="max-width: 200px;" title="{{ location.address }}">
-                                                <i class="fas fa-map-marker-alt me-1 text-success"></i>
-                                                {{ location.address }}
+                                            <div class="d-flex align-items-start justify-content-between">
+                                                <div class="fw-bold text-truncate me-2" style="max-width: 200px;" title="{{ location.address }}">
+                                                    <i class="fas fa-map-marker-alt me-1 text-success"></i>
+                                                    {% if location.place_id %}
+                                                        <a href="{{ url_for('view_place_visits', device_name=device_name, place_id=location.place_id) }}" class="text-decoration-none">{{ location.address }}</a>
+                                                    {% else %}
+                                                        {{ location.address }}
+                                                    {% endif %}
+                                                </div>
+                                                <button class="btn btn-sm btn-outline-primary" title="Open in Google Maps"
+                                                        onclick="openInGoogleMaps({{ location.latitude }}, {{ location.longitude }}, '{{ location.address | replace("'", "\'") }}')">
+                                                    <i class="fas fa-location-arrow"></i>
+                                                </button>
                                             </div>
                                             <small class="text-muted">{{ location.total_points }} GPS points</small>
                                             <div class="mt-1">

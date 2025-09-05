@@ -82,6 +82,10 @@
                                             {% if device.last_location %}
                                             • <i class="fas fa-clock me-1"></i>Last seen: {{ device.last_location | user_timezone }}
                                             {% endif %}
+                                            • <i class="fas fa-record-vinyl me-1"></i>
+                                              <span id="rec-status-{{ device.device_name | replace('.', '-') | replace(' ', '-') }}">
+                                                {{ 'Recording' if device.is_active else 'Not Recording' }}
+                                              </span>
                                         </div>
                                     </div>
                                     <div class="col-md-4 text-end">
@@ -94,6 +98,12 @@
                                                 <i class="fas fa-times"></i> Remove
                                             </button>
                                             {% endif %}
+                                            <button class="btn btn-secondary btn-sm" onclick="toggleRecording('{{ device.device_name }}', {{ 'true' if device.is_active else 'false' }})">
+                                                <i class="fas fa-power-off"></i> {{ 'Disable Recording' if device.is_active else 'Enable Recording' }}
+                                            </button>
+                                            <button class="btn btn-remove btn-sm" onclick="deleteAllLocations('{{ device.device_name }}')">
+                                                <i class="fas fa-trash"></i> Delete All Locations
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -136,8 +146,8 @@
 
 {% block extra_js %}
     <script>
-        // CSRF token from Flask
-        const csrf_token = "{{ csrf_token }}";
+        // CSRF token from meta tag (set in base.html)
+        const csrf_token = (document.querySelector('meta[name="csrf-token"]') || {}).getAttribute('content');
 
         // Convert device name to safe ID
         function deviceToId(deviceName) {
@@ -230,6 +240,54 @@
             } catch (error) {
                 console.error('Error removing nickname:', error);
                 showAlert('Failed to remove nickname', 'error');
+            }
+        }
+
+        // Toggle recording status
+        async function toggleRecording(deviceName, currentlyActive) {
+            const desired = !currentlyActive;
+            const confirmMsg = desired ? `Enable future recording for "${deviceName}"?` : `Disable future recording for "${deviceName}"?`;
+            if (!confirm(confirmMsg)) return;
+            try {
+                const response = await fetch(`/api/devices/${encodeURIComponent(deviceName)}/active`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrf_token
+                    },
+                    body: JSON.stringify({ is_active: desired })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showAlert(result.message, 'success');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showAlert(result.error || 'Failed to update recording status', 'error');
+                }
+            } catch (e) {
+                console.error('Error toggling recording:', e);
+                showAlert('Failed to update recording status', 'error');
+            }
+        }
+
+        // Delete all locations for a device
+        async function deleteAllLocations(deviceName) {
+            if (!confirm(`Permanently delete ALL location records for "${deviceName}"? This cannot be undone.`)) return;
+            try {
+                const response = await fetch(`/api/devices/${encodeURIComponent(deviceName)}/locations`, {
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': csrf_token }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showAlert(`Deleted ${result.deleted} records for ${deviceName}`, 'success');
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    showAlert(result.error || 'Failed to delete locations', 'error');
+                }
+            } catch (e) {
+                console.error('Error deleting locations:', e);
+                showAlert('Failed to delete locations', 'error');
             }
         }
 

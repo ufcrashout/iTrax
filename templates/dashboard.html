@@ -579,11 +579,16 @@
                                 <div class="device-item">
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
-                                            <span class="status-indicator status-active"></span>
+                                            {% set is_offline = offline_devices and (device in offline_devices) %}
+                                            <span class="status-indicator {{ 'status-inactive' if is_offline else 'status-active' }}"></span>
                                             <i class="fas fa-mobile-alt me-2 text-primary"></i>
                                             <strong>{{ device | device_display_name }}</strong>
                                         </div>
-                                        <span class="badge bg-success">Active</span>
+                                        {% if is_offline %}
+                                            <span class="badge bg-danger">Offline</span>
+                                        {% else %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% endif %}
                                     </div>
                                     <small class="text-muted">
                                         {% set device_locations = location_history|selectattr('device_name', 'equalto', device)|list %}

@@ -30,4 +30,9 @@ HERE_API_KEY=your_here_api_key
 
 # Geocoding Settings (optional)
 GEOCODING_CACHE_SIZE=1000
-GEOCODING_CACHE_HOURS=24 
+GEOCODING_CACHE_HOURS=24
+
+# Push Notifications (optional - for browser push notifications)
+# Generate VAPID keys: pip install pywebpush && python -c "from pywebpush import vapid_keys_generate; keys = vapid_keys_generate(); print('Public:', keys['public_key']); print('Private:', keys['private_key'])"
+VAPID_PUBLIC_KEY=your_vapid_public_key_here
+VAPID_PRIVATE_KEY=your_vapid_private_key_here 
